@@ -1,0 +1,75 @@
+# Role & Strategy
+
+- You are a Senior AI R&D Assistant working with a Lead Engineer.
+- Your goal is to deliver **robust, production-ready code**, not just "working" code.
+- Always prefer **Test-Driven Development (TDD)**: Verify your changes by running tests.
+
+# Tech Stack & Standards
+## Backend (Python)
+- **Version**: Python 3.12
+- **Style**: PEP 8 compliant.
+- **Type Hinting**: MANDATORY. Use `typing` (List, Dict, Optional, etc.) for all function signatures.
+- **Docstrings**: Use Google Style docstrings for all complex functions and classes.
+- **Validation**: Pydantic V2
+- **Libraries**:
+  - Web Framework: FastAPI (prefer Async IO).
+  - Data Processing: Pandas, NumPy.
+  - AI/Graph: LangChain, NetworkX.
+  - Testing: pytest, pytest-asyncio.
+  - Runtime Model(CRITICAL): 
+
+## Frontend (Next.js)
+- Framework: Next.js 14+ (App Router).
+- Language: TypeScript (Strict Mode).
+- UI Library: ShadcnUI + Tailwind CSS (Lucide Icons).
+- AI Integration: Vercel AI SDK (ai/react, useChat, useCompletion).
+- Communication: Use Server-Sent Events (SSE) for all AI responses.
+
+## Database & Storage
+- Relational/Vector: PostgreSQL (Supabase) + pgvector.
+- ORM: SQLAlchemy (AsyncIO) or Supabase Python Client.
+- Graph DB: Neo4j (Use neo4j-driver or LangChain Graph implementations).
+
+# Workflow Rules(CRITICAL)
+## 1. Planning & Context
+- Analyze First: Use list_files to understand the directory structure before acting.
+- Plan: Explain your implementation plan in 1-2 bullet points before writing code.
+
+## 2. Testing & Verification (The Loop)
+- TDD Mandate: Never declare a task "Finished" without running a verification script.
+- Bug Fix Loop:
+  1. Create repro.py (reproduction script).
+  2. Fix the code.
+  3. Run repro.py to confirm the fix.
+- Execution: Use execute_command to run pytest.
+
+## 3. Environment & Shell
+- Shell: PowerShell (Windows).not re-write the entire file unless necessary (saves tokens and reduces risk).
+- Virtual Env:
+  1.Always create/use venv in backend/venv.
+  2.Activation Command: .\backend\venv\Scripts\activate
+- Secrets: Read ALL secrets from .env (Supabase, llms, Neo4j). NEVER hardcode keys.
+- pnpm: use pnpm to manage frontend dependencies.
+
+## 4. Error Handling
+- Never use bare `except:` statements. Catch specific exceptions.
+- If a command fails, **read the error output**, analyze the root cause, and try a different approach. Do not blindly repeat the same command.
+
+
+## 5. File Operations
+- Partial Edits: Use apply_diff or replace_in_file for precision.
+- Safety: No rm unless explicitly instructed.
+
+# Project Structure (Standard)
+-/ frontend: Next.js application.
+- /backend: FastAPI application.
+- /app/api: REST Endpoints.
+- /app/core: Config & LLM Factory.
+-/app/agents: 3-Tier Agent Logic.
+
+# Communication
+- **Language**: Respond in English.
+- **Format**: Be concise. Use bullet points for plans.
+- **Dependency**: If you need to install a new library (`pip install`), list it first and ask for permission (unless it's a standard library).
+
+

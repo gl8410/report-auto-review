@@ -1,0 +1,95 @@
+export enum ImportanceLevel {
+  Important = '重要',
+  Medium = '中等',
+  Normal = '一般'
+}
+
+export enum ReviewType {
+  ContentCompleteness = '内容完整性',
+  CalculationAccuracy = '计算结果准确性',
+  ProhibitionClause = '禁止条款',
+  LogicConsistency = '前后逻辑一致性',
+  MeasureCompliance = '措施遵从性',
+  CalculationCorrectness = '计算正确性'
+}
+
+export interface RuleGroup {
+  id: string;
+  name: string;
+  description?: string;
+  created_at?: string;
+}
+
+export interface Rule {
+  id: string;
+  group_id: string;
+  clause_number: string;  // 条文号 (如 3.1.2)
+  standard_name?: string; // 来源标准名称
+  content: string;        // 规则具体内容
+  review_type?: string;   // 审查类型
+  importance: string;     // 重要性 (一般/中等/重要)
+}
+
+export interface Document {
+  id: string;
+  filename: string;
+  storage_path?: string;
+  status: 'UPLOADED' | 'PARSING' | 'INDEXED' | 'FAILED';
+  meta_info?: string;
+  upload_time: string;
+}
+
+export interface ReviewTask {
+  id: string;
+  document_id: string;
+  document_name?: string;
+  rule_group_id: string;
+  rule_group_name?: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  progress: number;
+  start_time?: string;
+  end_time?: string;
+  created_at?: string;
+  stats?: {
+    PASS: number;
+    REJECT: number;
+    MANUAL_CHECK: number;
+  };
+}
+
+export type ResultCode = 'PASS' | 'REJECT' | 'MANUAL_CHECK';
+
+export interface ReviewResult {
+  id: string;
+  task_id: string;
+  rule_id: string;
+  clause_number: string;
+  standard_name?: string;  // 规则来源/规范名称
+  rule_content: string;
+  importance?: string;
+  result_code: ResultCode;
+  reasoning: string | null;
+  evidence: string | null;
+  suggestion: string | null;
+  created_at?: string;
+  // Legacy field for backward compatibility
+  status?: string;
+}
+
+export enum AppStep {
+  Rules = 'RULES',
+  Upload = 'UPLOAD',
+  Review = 'REVIEW',
+  Report = 'REPORT'
+}
+
+export interface UploadedFile {
+  data: string;
+  type: string;
+}
+
+export enum ReviewStatus {
+  Pass = 'Pass',
+  Fail = 'Fail',
+  NotApplicable = 'N/A'
+}

@@ -1,0 +1,47 @@
+For rule management module updates as follows:
+1. add CRUD for rule groups, now can not delete, rename it;
+2. add CRUD for rules, now can just delete; 
+3. import standard file should support pdf, docx files;
+4. add upload and download functions for the whole rules in a rule group in the format of csv files;
+5. dimensions of rule is not enough, 
+6. in rule formating process, follow the definitions of RULE 
+      * `id`: UUID
+      * `group_id`: 关联的规则组ID
+      * `standard_name`: 来源标准名称
+      * `clause_number`: 条文号 (如 3.1.2)
+      * `content`: 规则具体内容 (自然语言)
+      * `review_type`: 审查类型 (内容完整性/计算结果准确性/禁止条款/前后逻辑一致性/措施遵从性/计算正确性)六种之一，由llm自行判断
+      * `importance`: 重要性 (一般/中等/重要)，由llm自行判断
+
+
+during report reviewing process, navigate to other module and come back the reviewing status will disappear, make reviewing process stay on the page until it's done
+
+
+let's go ahead with the last module, add below functions:
+1.add CRUD actions to each review record;
+2.add CRUD actions to each to each finding;
+3.add different colors for each finding with result status, (PASS:green, REJECT:red, MANUAL\_CHECK:orange);
+4.add each review result a filter to show different finding status;
+5.add each review result a button to create a short summary report based on the fundings, in the summary report, there should be how many rules are used, how many passed, rejected or need manual check, which are the serious problems, which are less important problems, summary should be pdf file and constraint to 2 pages.
+3.for each finding, there should be a data schema as follows:
+  * **ReviewResultItem (单条结果)**:
+      * `id`: UUID
+      * `task_id`: 关联任务
+      * `rule_id`: 关联规则
+      * `result_code`: 枚举 (PASS, REJECT, MANUAL\_CHECK)
+      * `reasoning`: LLM生成的判断理由
+      * `evidence`: 引用原文片段 (及其在文档中的位置/页码)
+      * `suggestion`: 修改建议
+
+
+for module 1 rule management, show source name column in rule list
+
+can add new rule file to existing rule group, make a test to find out the issue, add a new rule file @flowassess_rule_1河道管理范围内建设项目防洪评价技术规程(1).docx to exisisting rule group "洪评_穿河项目"
+
+
+add source column to module 4 both in the web list and download csv file to lete user know what source the rule comes from
+
+add source filter to module 4
+
+1.add human check function to module 4, human can modified "suggestions";
+2.add "Human confirm" result_code set it to the top to droplist, human can change "result_code";

@@ -1,0 +1,5 @@
+{
+  "name": "ADS Lite - AI Review",
+  "description": "Automated engineering document review system using Gemini's long-context capabilities for direct rule-based auditing.",
+  "requestFramePermissions": []
+}
