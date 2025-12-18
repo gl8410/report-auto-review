@@ -39,7 +39,8 @@ DOCUMENTS_COLLECTION = "documents"
 
 # Valid values for rule fields
 VALID_REVIEW_TYPES = ["内容完整性", "计算结果准确性", "禁止条款", "前后逻辑一致性", "措施遵从性", "计算正确性"]
-VALID_IMPORTANCE = ["一般", "中等", "重要"]
+# Valid risk levels
+VALID_RISK_LEVELS = ["低风险", "中风险", "高风险"]
 
 
 # ============== Pydantic Schemas for LLM Output ==============
@@ -52,9 +53,9 @@ class ParsedRule(BaseModel):
         default="内容完整性",
         description="审查类型：内容完整性/计算结果准确性/禁止条款/前后逻辑一致性/措施遵从性/计算正确性"
     )
-    importance: str = Field(
-        default="中等",
-        description="重要性：一般/中等/重要"
+    risk_level: str = Field(
+        default="中风险",
+        description="风险等级：低风险/中风险/高风险"
     )
 
 
@@ -185,7 +186,7 @@ async def parse_rules_from_text(text: str, filename: str = "") -> ParsedRulesRes
             "clause_number": "条文号，如 3.1.2 或 第三条",
             "content": "该条规则的具体内容，保持原文",
             "review_type": "审查类型，必须从以下六种中选择一种：内容完整性/计算结果准确性/禁止条款/前后逻辑一致性/措施遵从性/计算正确性",
-            "importance": "重要性等级，必须从以下三种中选择一种：一般/中等/重要"
+            "risk_level": "风险等级，必须从以下三种中选择一种：低风险/中风险/高风险"
         }
     ]
 }
@@ -198,14 +199,14 @@ async def parse_rules_from_text(text: str, filename: str = "") -> ParsedRulesRes
 - 措施遵从性：要求采取特定的工程措施或方法
 - 计算正确性：涉及计算方法、公式的正确使用
 
-【重要性判断标准】
-- 重要：强制性条款、涉及安全的条款、使用"必须"、"严禁"、"不得"等词
-- 中等：一般性要求、使用"应"、"应当"等词
-- 一般：建议性条款、使用"宜"、"可"等词
+【风险等级判断标准】
+- 高风险：强制性条款、涉及安全的条款、使用"必须"、"严禁"、"不得"等词
+- 中风险：一般性要求、使用"应"、"应当"等词
+- 低风险：建议性条款、使用"宜"、"可"等词
 
 【重要提醒】
 1. review_type 必须是上述6种之一，不能自创
-2. importance 必须是：一般、中等、重要 之一
+2. risk_level 必须是：低风险、中风险、高风险 之一
 3. clause_number 保持原文格式
 4. 只输出JSON，不要其他解释文字"""
 
@@ -246,11 +247,14 @@ async def parse_rules_from_text(text: str, filename: str = "") -> ParsedRulesRes
             # Normalize review_type
             if rule.review_type not in VALID_REVIEW_TYPES:
                 rule.review_type = "内容完整性"  # Default fallback
-            # Normalize importance
-            if rule.importance not in VALID_IMPORTANCE:
-                # Try to map old values
-                importance_map = {"High": "重要", "Medium": "中等", "Low": "一般"}
-                rule.importance = importance_map.get(rule.importance, "中等")
+            # Normalize risk_level
+            if rule.risk_level not in VALID_RISK_LEVELS:
+                # Try to map old values or English values
+                risk_map = {
+                    "High": "高风险", "Medium": "中风险", "Low": "低风险",
+                    "重要": "高风险", "中等": "中风险", "一般": "低风险"
+                }
+                rule.risk_level = risk_map.get(rule.risk_level, "中风险")
             validated_rules.append(rule)
 
         parsed_response.rules = validated_rules
@@ -263,7 +267,7 @@ async def parse_rules_from_text(text: str, filename: str = "") -> ParsedRulesRes
         try:
             # Sometimes LLM output is truncated, try to extract what we can
             # Find all complete rule objects
-            rule_pattern = r'\{\s*"clause_number"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"([^"]+)"\s*,\s*"review_type"\s*:\s*"([^"]+)"\s*,\s*"importance"\s*:\s*"([^"]+)"\s*\}'
+            rule_pattern = r'\{\s*"clause_number"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"([^"]+)"\s*,\s*"review_type"\s*:\s*"([^"]+)"\s*,\s*"risk_level"\s*:\s*"([^"]+)"\s*\}'
             matches = re.findall(rule_pattern, response or "")
             if matches:
                 print(f"Recovered {len(matches)} rules from malformed JSON")
@@ -273,7 +277,7 @@ async def parse_rules_from_text(text: str, filename: str = "") -> ParsedRulesRes
                         clause_number=match[0],
                         content=match[1],
                         review_type=match[2] if match[2] in VALID_REVIEW_TYPES else "内容完整性",
-                        importance=match[3] if match[3] in VALID_IMPORTANCE else "中等"
+                        risk_level=match[3] if match[3] in VALID_RISK_LEVELS else "中风险"
                     )
                     rules.append(rule)
                 # Extract standard_name if possible
@@ -348,8 +352,14 @@ async def get_embeddings(texts: List[str], batch_size: int = 2) -> List[List[flo
                 # Extract embeddings from response
                 batch_embeddings = [item["embedding"] for item in result["data"]]
                 all_embeddings.extend(batch_embeddings)
+            except httpx.HTTPStatusError as e:
+                print(f"Embedding error for batch {i // batch_size + 1}: {e}")
+                print(f"Response content: {e.response.text}")
+                raise
             except Exception as e:
                 print(f"Embedding error for batch {i // batch_size + 1}: {e}")
+                import traceback
+                traceback.print_exc()
                 raise
 
     return all_embeddings
@@ -755,7 +765,7 @@ async def compare_rule_with_context(
 - 条文号: {rule.get('clause_number', 'N/A')}
 - 规则内容: {rule.get('content', '')}
 - 审查类型: {rule.get('review_type', '未指定')}
-- 重要性: {rule.get('importance', '中等')}
+- 风险等级: {rule.get('risk_level', '中风险')}
 
 ## 文档名称
 {document_filename}
@@ -945,9 +955,9 @@ async def generate_summary_report_content(
     except Exception as e:
         print(f"Font registration error: {e}")
 
-    # Separate results by importance and result_code
-    serious_problems = [r for r in results if r["result_code"] == "REJECT" and r.get("importance") == "重要"]
-    medium_problems = [r for r in results if r["result_code"] == "REJECT" and r.get("importance") != "重要"]
+    # Separate results by risk_level and result_code
+    serious_problems = [r for r in results if r["result_code"] == "REJECT" and r.get("risk_level") == "高风险"]
+    medium_problems = [r for r in results if r["result_code"] == "REJECT" and r.get("risk_level") != "高风险"]
     manual_checks = [r for r in results if r["result_code"] == "MANUAL_CHECK"]
 
     # Generate LLM summary
@@ -1076,9 +1086,9 @@ async def generate_summary_report_content(
     story.append(Paragraph(llm_summary, body_style))
     story.append(Spacer(1, 5*mm))
 
-    # Serious problems (importance=重要)
+    # Serious problems (risk_level=高风险)
     if serious_problems:
-        story.append(Paragraph("严重问题（重要条款不通过）", heading_style))
+        story.append(Paragraph("严重问题（高风险条款不通过）", heading_style))
         for i, r in enumerate(serious_problems[:8], 1):  # Limit to 8
             clause = r.get('clause_number', 'N/A')
             reason = (r.get('reasoning') or '')[:150]
@@ -1092,7 +1102,7 @@ async def generate_summary_report_content(
 
     # Other problems
     if medium_problems:
-        story.append(Paragraph("其他问题（一般/中等条款不通过）", heading_style))
+        story.append(Paragraph("其他问题（中/低风险条款不通过）", heading_style))
         for i, r in enumerate(medium_problems[:6], 1):  # Limit to 6
             clause = r.get('clause_number', 'N/A')
             reason = (r.get('reasoning') or '')[:100]

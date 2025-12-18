@@ -1,7 +1,7 @@
-export enum ImportanceLevel {
-  Important = '重要',
-  Medium = '中等',
-  Normal = '一般'
+export enum RiskLevel {
+  High = '高风险',
+  Medium = '中风险',
+  Low = '低风险'
 }
 
 export enum ReviewType {
@@ -27,7 +27,7 @@ export interface Rule {
   standard_name?: string; // 来源标准名称
   content: string;        // 规则具体内容
   review_type?: string;   // 审查类型
-  importance: string;     // 重要性 (一般/中等/重要)
+  risk_level: string;     // 风险等级 (低风险/中风险/高风险)
 }
 
 export interface Document {
@@ -66,7 +66,8 @@ export interface ReviewResult {
   clause_number: string;
   standard_name?: string;  // 规则来源/规范名称
   rule_content: string;
-  importance?: string;
+  review_type?: string;
+  risk_level?: string;
   result_code: ResultCode;
   reasoning: string | null;
   evidence: string | null;

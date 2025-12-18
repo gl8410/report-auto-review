@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Rule, ReviewResult, UploadedFile, ImportanceLevel, ReviewStatus } from '../types';
+import { Rule, ReviewResult, UploadedFile, RiskLevel, ReviewStatus } from '../types';
 
 // Helper to get AI instance
 const getAI = () => {
@@ -15,7 +15,7 @@ const getAI = () => {
  */
 export const parseRulesFromContent = async (content: string): Promise<Rule[]> => {
   const ai = getAI();
-  
+
   // Using 2.5-Flash for speed and efficiency in extraction tasks
   const modelId = 'gemini-2.5-flash';
 
@@ -24,7 +24,7 @@ export const parseRulesFromContent = async (content: string): Promise<Rule[]> =>
     Analyze the following text which contains a list of engineering standards or rules.
     Extract them into individual rules. 
     
-    If the text implies an importance level, assign it (High, Medium, Low). 
+    If the text implies a risk level, assign it (High, Medium, Low). 
     If not specified, infer based on keywords (e.g., "shall", "must" = High; "should" = Medium; "may" = Low).
     
     Text content:
@@ -46,9 +46,9 @@ export const parseRulesFromContent = async (content: string): Promise<Rule[]> =>
               clause: { type: Type.STRING },
               standardName: { type: Type.STRING },
               content: { type: Type.STRING },
-              importance: { type: Type.STRING, enum: [ImportanceLevel.High, ImportanceLevel.Medium, ImportanceLevel.Low] }
+              risk_level: { type: Type.STRING, enum: [RiskLevel.High, RiskLevel.Medium, RiskLevel.Low] }
             },
-            required: ["id", "clause", "standardName", "content", "importance"]
+            required: ["id", "clause", "standardName", "content", "risk_level"]
           }
         }
       }
@@ -68,7 +68,7 @@ export const parseRulesFromContent = async (content: string): Promise<Rule[]> =>
  * Reviews a document against a set of rules using Gemini Pro (Long Context).
  */
 export const reviewDocument = async (
-  file: UploadedFile, 
+  file: UploadedFile,
   rules: Rule[]
 ): Promise<ReviewResult[]> => {
   const ai = getAI();

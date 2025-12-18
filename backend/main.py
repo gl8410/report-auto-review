@@ -29,8 +29,8 @@ os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 # Valid review types
 VALID_REVIEW_TYPES = ["内容完整性", "计算结果准确性", "禁止条款", "前后逻辑一致性", "措施遵从性", "计算正确性"]
-# Valid importance levels
-VALID_IMPORTANCE = ["一般", "中等", "重要"]
+# Valid risk levels
+VALID_RISK_LEVELS = ["低风险", "中风险", "高风险"]
 
 
 # ============== Pydantic Request/Response Schemas ==============
@@ -52,7 +52,7 @@ class RuleCreate(BaseModel):
     content: str
     standard_name: Optional[str] = None
     review_type: Optional[str] = None
-    importance: str = "中等"
+    risk_level: str = "中风险"
 
 
 class RuleResponse(BaseModel):
@@ -62,7 +62,7 @@ class RuleResponse(BaseModel):
     content: str
     standard_name: Optional[str]
     review_type: Optional[str]
-    importance: str
+    risk_level: str
 
 
 class RuleUpdate(BaseModel):
@@ -70,7 +70,7 @@ class RuleUpdate(BaseModel):
     content: Optional[str] = None
     standard_name: Optional[str] = None
     review_type: Optional[str] = None
-    importance: Optional[str] = None
+    risk_level: Optional[str] = None
 
 
 # ============== Application Lifespan ==============
@@ -162,17 +162,30 @@ def update_rule_group(group_id: str, data: RuleGroupCreate, session: Session = D
 
 @app.delete("/rule-groups/{group_id}")
 def delete_rule_group(group_id: str, session: Session = Depends(get_session)):
-    """Delete a rule group and all its rules."""
+    """Delete a rule group and all its rules, plus associated review tasks."""
     group = session.get(RuleGroup, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Rule group not found")
-    # Delete all rules in this group first
+    
+    # 1. Delete associated Review Tasks and their Results
+    tasks = session.exec(select(ReviewTask).where(ReviewTask.rule_group_id == group_id)).all()
+    for task in tasks:
+        # Delete results for this task
+        results = session.exec(select(ReviewResultItem).where(ReviewResultItem.task_id == task.id)).all()
+        for res in results:
+            session.delete(res)
+        # Delete the task itself
+        session.delete(task)
+    
+    # 2. Delete all rules in this group
     rules = session.exec(select(Rule).where(Rule.group_id == group_id)).all()
     for rule in rules:
         session.delete(rule)
+        
+    # 3. Delete the group
     session.delete(group)
     session.commit()
-    return {"message": "Rule group deleted"}
+    return {"message": "Rule group and associated data deleted"}
 
 
 # ============== Rule Endpoints ==============
@@ -195,8 +208,8 @@ def create_rule(group_id: str, data: RuleCreate, session: Session = Depends(get_
     # Validate review_type and importance
     if data.review_type and data.review_type not in VALID_REVIEW_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid review_type. Must be one of: {VALID_REVIEW_TYPES}")
-    if data.importance not in VALID_IMPORTANCE:
-        raise HTTPException(status_code=400, detail=f"Invalid importance. Must be one of: {VALID_IMPORTANCE}")
+    if data.risk_level not in VALID_RISK_LEVELS:
+        raise HTTPException(status_code=400, detail=f"Invalid risk_level. Must be one of: {VALID_RISK_LEVELS}")
 
     rule = Rule(
         group_id=group_id,
@@ -204,7 +217,7 @@ def create_rule(group_id: str, data: RuleCreate, session: Session = Depends(get_
         content=data.content,
         standard_name=data.standard_name,
         review_type=data.review_type,
-        importance=data.importance
+        risk_level=data.risk_level
     )
     session.add(rule)
     session.commit()
@@ -229,10 +242,10 @@ def update_rule(rule_id: str, data: RuleUpdate, session: Session = Depends(get_s
         if data.review_type not in VALID_REVIEW_TYPES:
             raise HTTPException(status_code=400, detail=f"Invalid review_type. Must be one of: {VALID_REVIEW_TYPES}")
         rule.review_type = data.review_type
-    if data.importance is not None:
-        if data.importance not in VALID_IMPORTANCE:
-            raise HTTPException(status_code=400, detail=f"Invalid importance. Must be one of: {VALID_IMPORTANCE}")
-        rule.importance = data.importance
+    if data.risk_level is not None:
+        if data.risk_level not in VALID_RISK_LEVELS:
+            raise HTTPException(status_code=400, detail=f"Invalid risk_level. Must be one of: {VALID_RISK_LEVELS}")
+        rule.risk_level = data.risk_level
 
     session.add(rule)
     session.commit()
@@ -273,7 +286,7 @@ async def process_uploaded_rules(group_id: str, content: str, filename: str, ses
                 content=parsed_rule.content,
                 standard_name=parsed.standard_name,
                 review_type=parsed_rule.review_type,
-                importance=parsed_rule.importance
+                risk_level=parsed_rule.risk_level
             )
             session.add(rule)
         session.commit()
@@ -341,7 +354,7 @@ def export_rules_csv(group_id: str, session: Session = Depends(get_session)):
     writer = csv.writer(output)
 
     # Write header
-    writer.writerow(["id", "standard_name", "clause_number", "content", "review_type", "importance"])
+    writer.writerow(["id", "standard_name", "clause_number", "content", "review_type", "risk_level"])
 
     # Write rules
     for rule in rules:
@@ -351,7 +364,7 @@ def export_rules_csv(group_id: str, session: Session = Depends(get_session)):
             rule.clause_number,
             rule.content,
             rule.review_type or "",
-            rule.importance
+            rule.risk_level
         ])
 
     output.seek(0)
@@ -408,13 +421,13 @@ async def import_rules_csv(
         # Get optional fields with defaults
         standard_name = row.get('standard_name', '').strip() or None
         review_type = row.get('review_type', '').strip() or None
-        importance = row.get('importance', '中等').strip()
+        risk_level = row.get('risk_level', '中风险').strip()
 
         # Validate review_type and importance
         if review_type and review_type not in VALID_REVIEW_TYPES:
             review_type = None
-        if importance not in VALID_IMPORTANCE:
-            importance = "中等"
+        if risk_level not in VALID_RISK_LEVELS:
+            risk_level = "中风险"
 
         rule = Rule(
             group_id=group_id,
@@ -422,7 +435,7 @@ async def import_rules_csv(
             clause_number=clause_number,
             content=content_text,
             review_type=review_type,
-            importance=importance
+            risk_level=risk_level
         )
         session.add(rule)
         imported_count += 1
@@ -497,7 +510,9 @@ async def process_document_background(doc_id: str, file_content: bytes, filename
             print(f"Successfully indexed document {filename} with {chunk_count} chunks")
 
         except Exception as e:
-            print(f"Error processing document {filename}: {e}")
+            import traceback
+            traceback.print_exc()
+            print(f"Error processing document {filename}: {repr(e)}")
             doc.status = DocumentStatus.FAILED.value
             import json
             doc.meta_info = json.dumps({"error": str(e)})
@@ -632,6 +647,12 @@ async def execute_review_background(task_id: str, document_id: str, rule_group_i
         print(f"[Review {task_id}] Starting review of {total_rules} rules against document '{doc.filename}'")
 
         for i, rule in enumerate(rules):
+            # Check for cancellation
+            session.refresh(task)
+            if task.status == TaskStatus.CANCELLED.value:
+                print(f"[Review {task_id}] Review cancelled by user.")
+                return
+
             try:
                 print(f"[Review {task_id}] Processing rule {i+1}/{total_rules}: {rule.clause_number}")
 
@@ -641,7 +662,7 @@ async def execute_review_background(task_id: str, document_id: str, rule_group_i
                     "content": rule.content,
                     "clause_number": rule.clause_number,
                     "review_type": rule.review_type,
-                    "importance": rule.importance
+                    "risk_level": rule.risk_level
                 }
 
                 result = await execute_review_for_rule(
@@ -830,7 +851,7 @@ def get_review_results(task_id: str, session: Session = Depends(get_session)):
             "standard_name": rule.standard_name if rule else "N/A",
             "rule_content": rule.content if rule else "N/A",
             "review_type": rule.review_type if rule else None,
-            "importance": rule.importance if rule else "中等",
+            "risk_level": rule.risk_level if rule else "中风险",
             "result_code": result.result_code,
             "reasoning": result.reasoning,
             "evidence": result.evidence,
@@ -862,6 +883,24 @@ def delete_review_task(task_id: str, session: Session = Depends(get_session)):
     return {"message": f"Review task and {len(results)} results deleted"}
 
 
+@app.post("/reviews/{task_id}/cancel")
+def cancel_review_task(task_id: str, session: Session = Depends(get_session)):
+    """Cancel a running review task."""
+    task = session.get(ReviewTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.status not in [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]:
+        raise HTTPException(status_code=400, detail=f"Cannot cancel task in {task.status} state")
+
+    task.status = TaskStatus.CANCELLED.value
+    task.end_time = datetime.now(timezone.utc)
+    session.add(task)
+    session.commit()
+
+    return {"message": "Review task cancelled", "status": task.status}
+
+
 # ============== Review Result Item CRUD ==============
 
 class ResultUpdateRequest(BaseModel):
@@ -886,7 +925,7 @@ def get_review_result(result_id: str, session: Session = Depends(get_session)):
         "clause_number": rule.clause_number if rule else "N/A",
         "rule_content": rule.content if rule else "N/A",
         "review_type": rule.review_type if rule else None,
-        "importance": rule.importance if rule else "中等",
+        "risk_level": rule.risk_level if rule else "中风险",
         "result_code": result.result_code,
         "reasoning": result.reasoning,
         "evidence": result.evidence,
@@ -975,7 +1014,7 @@ async def generate_summary_pdf(task_id: str, session: Session = Depends(get_sess
         enriched_results.append({
             "clause_number": rule.clause_number if rule else "N/A",
             "rule_content": rule.content if rule else "N/A",
-            "importance": rule.importance if rule else "中等",
+            "risk_level": rule.risk_level if rule else "中风险",
             "result_code": result.result_code,
             "reasoning": result.reasoning,
             "evidence": result.evidence,

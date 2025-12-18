@@ -34,6 +34,7 @@ class DocumentStatus(str, Enum):
     PARSING = "PARSING"
     INDEXED = "INDEXED"
     FAILED = "FAILED"
+    MANUAL_CHECK = "MANUAL_CHECK"
 
 
 class TaskStatus(str, Enum):
@@ -42,6 +43,7 @@ class TaskStatus(str, Enum):
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 class ResultCode(str, Enum):
@@ -76,7 +78,7 @@ class Rule(SQLModel, table=True):
     clause_number: str  # 条文号 (如 3.1.2)
     content: str  # 规则具体内容
     review_type: Optional[str] = None  # 审查类型 (内容完整性/计算结果准确性/禁止条款/前后逻辑一致性/措施遵从性/计算正确性)
-    importance: str = "中等"  # 重要性: 一般/中等/重要
+    risk_level: str = "中风险"  # 风险等级: 低风险/中风险/高风险
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships

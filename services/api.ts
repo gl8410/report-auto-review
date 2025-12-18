@@ -12,26 +12,26 @@ export const api = {
 
   createRuleGroup: async (name: string, description: string): Promise<RuleGroup> => {
     const res = await fetch(`${API_BASE}/rule-groups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description })
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to create group');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to create group');
     }
     return res.json();
   },
 
   updateRuleGroup: async (groupId: string, name: string, description?: string): Promise<RuleGroup> => {
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description })
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description })
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to update group');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to update group');
     }
     return res.json();
   },
@@ -39,8 +39,8 @@ export const api = {
   deleteRuleGroup: async (groupId: string): Promise<void> => {
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}`, { method: 'DELETE' });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to delete group');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to delete group');
     }
   },
 
@@ -53,26 +53,26 @@ export const api = {
 
   createRule: async (groupId: string, rule: Partial<Rule>): Promise<Rule> => {
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}/rules`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rule)
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rule)
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to create rule');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to create rule');
     }
     return res.json();
   },
 
   updateRule: async (ruleId: string, rule: Partial<Rule>): Promise<Rule> => {
     const res = await fetch(`${API_BASE}/rules/${ruleId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rule)
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rule)
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to update rule');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to update rule');
     }
     return res.json();
   },
@@ -87,12 +87,12 @@ export const api = {
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}/upload`, {
-        method: 'POST',
-        body: formData
+      method: 'POST',
+      body: formData
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to upload rules');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to upload rules');
     }
     return res.json();
   },
@@ -116,12 +116,12 @@ export const api = {
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}/import-csv`, {
-        method: 'POST',
-        body: formData
+      method: 'POST',
+      body: formData
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to import CSV');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to import CSV');
     }
     return res.json();
   },
@@ -143,12 +143,12 @@ export const api = {
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch(`${API_BASE}/documents`, {
-        method: 'POST',
-        body: formData
+      method: 'POST',
+      body: formData
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to upload document');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to upload document');
     }
     return res.json();
   },
@@ -156,21 +156,21 @@ export const api = {
   deleteDocument: async (docId: string): Promise<void> => {
     const res = await fetch(`${API_BASE}/documents/${docId}`, { method: 'DELETE' });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to delete document');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to delete document');
     }
   },
 
   // ============== Reviews ==============
-  startReview: async (docId: string, groupId: string): Promise<{task_id: string, status: string, message: string, total_rules: number}> => {
+  startReview: async (docId: string, groupId: string): Promise<{ task_id: string, status: string, message: string, total_rules: number }> => {
     const res = await fetch(`${API_BASE}/reviews/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document_id: docId, rule_group_id: groupId })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_id: docId, rule_group_id: groupId })
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to start review');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to start review');
     }
     return res.json();
   },
@@ -196,8 +196,16 @@ export const api = {
   deleteReviewTask: async (taskId: string): Promise<void> => {
     const res = await fetch(`${API_BASE}/reviews/${taskId}`, { method: 'DELETE' });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to delete review task');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to delete review task');
+    }
+  },
+
+  cancelReviewTask: async (taskId: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/reviews/${taskId}/cancel`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to cancel review task');
     }
   },
 
@@ -215,13 +223,13 @@ export const api = {
     suggestion?: string;
   }): Promise<ReviewResult> => {
     const res = await fetch(`${API_BASE}/results/${resultId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
     });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to update result');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to update result');
     }
     return res.json();
   },
@@ -229,8 +237,8 @@ export const api = {
   deleteResult: async (resultId: string): Promise<void> => {
     const res = await fetch(`${API_BASE}/results/${resultId}`, { method: 'DELETE' });
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to delete result');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to delete result');
     }
   },
 
@@ -238,8 +246,8 @@ export const api = {
   downloadSummaryPdf: async (taskId: string): Promise<void> => {
     const res = await fetch(`${API_BASE}/reviews/${taskId}/summary-pdf`);
     if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to generate PDF');
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to generate PDF');
     }
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
