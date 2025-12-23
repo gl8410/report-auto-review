@@ -1,6 +1,6 @@
-import { RuleGroup, Rule, Document, ReviewTask, ReviewResult } from '../types';
+import { RuleGroup, Rule, Document, DocumentChunk, ReviewTask, ReviewResult } from '../types';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'http://localhost:8000/api/v1';
 
 export const api = {
   // ============== Rule Groups ==============
@@ -10,11 +10,11 @@ export const api = {
     return res.json();
   },
 
-  createRuleGroup: async (name: string, description: string): Promise<RuleGroup> => {
+  createRuleGroup: async (name: string, description: string, parentId?: string): Promise<RuleGroup> => {
     const res = await fetch(`${API_BASE}/rule-groups`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, description })
+      body: JSON.stringify({ name, description, parent_id: parentId })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -23,11 +23,11 @@ export const api = {
     return res.json();
   },
 
-  updateRuleGroup: async (groupId: string, name: string, description?: string): Promise<RuleGroup> => {
+  updateRuleGroup: async (groupId: string, name: string, description?: string, parentId?: string): Promise<RuleGroup> => {
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, description })
+      body: JSON.stringify({ name, description, parent_id: parentId })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -161,12 +161,18 @@ export const api = {
     }
   },
 
+  getDocumentChunks: async (docId: string): Promise<DocumentChunk[]> => {
+    const res = await fetch(`${API_BASE}/documents/${docId}/chunks`);
+    if (!res.ok) throw new Error('Failed to fetch document chunks');
+    return res.json();
+  },
+
   // ============== Reviews ==============
-  startReview: async (docId: string, groupId: string): Promise<{ task_id: string, status: string, message: string, total_rules: number }> => {
+  startReview: async (documentId: string, ruleGroupIds: string[]): Promise<any> => {
     const res = await fetch(`${API_BASE}/reviews/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ document_id: docId, rule_group_id: groupId })
+      body: JSON.stringify({ document_id: documentId, rule_group_ids: ruleGroupIds })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -269,6 +275,61 @@ export const api = {
   getResults: async (taskId: string): Promise<ReviewResult[]> => {
     const res = await fetch(`${API_BASE}/reviews/${taskId}/results`);
     if (!res.ok) throw new Error('Failed to fetch results');
+    return res.json();
+  },
+
+  // ============== History Analysis ==============
+  startHistoryAnalysis: async (draftFiles: File[], approvedFiles: File[]): Promise<any> => {
+    const formData = new FormData();
+    draftFiles.forEach(f => formData.append('draft_files', f));
+    approvedFiles.forEach(f => formData.append('approved_files', f));
+
+    const res = await fetch(`${API_BASE}/history-analysis`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to start history analysis');
+    }
+    return res.json();
+  },
+
+  getHistoryAnalysis: async (taskId: string): Promise<any> => {
+    const res = await fetch(`${API_BASE}/history-analysis/${taskId}`);
+    if (!res.ok) throw new Error('Failed to fetch history analysis');
+    return res.json();
+  },
+
+  updateOpinion: async (opinionId: string, data: { opinion?: string, risk_level?: string, review_type?: string }): Promise<any> => {
+    const res = await fetch(`${API_BASE}/history-analysis/opinions/${opinionId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to update opinion');
+    return res.json();
+  },
+
+  deleteOpinion: async (opinionId: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/history-analysis/opinions/${opinionId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete opinion');
+  },
+
+  getAnalysisFile: async (taskId: string, fileType: 'draft' | 'approved', fileIndex: number): Promise<string> => {
+    const res = await fetch(`${API_BASE}/history-analysis/files/${taskId}/${fileType}/${fileIndex}`);
+    if (!res.ok) throw new Error('Failed to fetch analysis file');
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
+
+  convertOpinionToRule: async (opinionId: string, ruleGroupId: string): Promise<any> => {
+    const res = await fetch(`${API_BASE}/history-analysis/opinions/${opinionId}/convert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rule_group_id: ruleGroupId })
+    });
+    if (!res.ok) throw new Error('Failed to convert opinion to rule');
     return res.json();
   }
 };

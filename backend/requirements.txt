@@ -10,6 +10,9 @@ aiofiles>=23.2.1
 httpx>=0.27.0
 psycopg2-binary>=2.9.9
 pydantic>=2.0.0
+pydantic-settings>=2.0.0
+alembic>=1.13.0
+reportlab>=4.0.0
 
 # Testing
 pytest>=8.0.0

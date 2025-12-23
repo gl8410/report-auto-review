@@ -4,6 +4,7 @@ import { RuleManager } from './components/RuleManager';
 import { DocumentUploader } from './components/DocumentUploader';
 import { ReviewEngine } from './components/ReviewEngine';
 import { ReportViewer } from './components/ReportViewer';
+import { HistoryAnalysis } from './components/HistoryAnalysis';
 import { AppStep } from './types';
 
 function App() {
@@ -19,6 +20,8 @@ function App() {
         return <ReviewEngine onGoToReports={() => setCurrentView(AppStep.Report)} />;
       case AppStep.Report:
         return <ReportViewer />;
+      case AppStep.HistoryAnalysis:
+        return <HistoryAnalysis />;
       default:
         return <RuleManager />;
     }

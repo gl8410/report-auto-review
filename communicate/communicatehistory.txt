@@ -45,3 +45,54 @@ add source filter to module 4
 
 1.add human check function to module 4, human can modified "suggestions";
 2.add "Human confirm" result_code set it to the top to droplist, human can change "result_code";
+
+
+
+
+Now let's go to module 5, called the **"Historical Report Intelligent Analysis & Rule Extraction Engine"**.
+The purpose of this module is to perform "reverse engineering" on engineering reports by comparing the "Draft Version" (Before) with the "Approved Version" (After). The system must utilize AI to infer the "Expert Review Opinions" that caused the changes, allow human validation, and store these opinions as standardized rules in a specific "ruleset" for future automated checks.
+
+# Workflow Description (User Interaction)
+1.  **File Upload & Configuration**:
+    * User selects the existing rule group from rule management module
+    * User uploads two PDF files:
+        * File A: `Original Draft` (Before,"原始稿件")
+        * File B: `Approved Final Version` (After,"修改后稿件")
+        !! 2 types of docs can be multiple files
+2.  **Intelligent Analysis (AI Processing)**:
+    * Extract text content from both PDF or docx files.
+    * Use an LLM to perform a semantic comparison (not just a text diff, but a semantic evolution analysis).
+    * **Core Task**: Based on the differences, the LLM must *infer* the expert opinion that dictated the change.
+        * *Example*: If the Approved Version adds a calculation for "Pipeline Occupation Area" that was missing in the Draft, the AI should infer the opinion: "Please supplement the calculation process and basis for the area of the river channel occupied by the pipeline."
+3.  **Human-in-the-Loop Review**:
+    * Frontend displays a workspace: Left side shows "AI Inferred Opinions", Right side shows "Text Diff Evidence" (Before vs. After snippets).
+    * User allows editing, correcting, or deleting the inferred opinions.
+    * User clicks "Confirm & Add to Rule Base".
+4.  **Rule Storage**:
+    * Save the validated opinions into the selected rule group as structured rules.(similar as in module 4 for reviewing comments)
+
+
+
+
+    in the analysis result management page in module5,  left panel listed the opinions, click each opinion, right panel will show the details of the opinion, make following changes:
+    Left panel:
+    1.add dropdown list to select risk leve, default value is judged by llm;
+    2.add dropdown list to select rule type, default value is judged by llm;
+    2.add to rule group button(“添加到规则库”) put on the top of each opinion,(on the right of rule_type) to save space;
+    Right panel, delete current contents, replace with below components:
+    1.a pdf/docx display component to show original content, this component could review the file, a locate button on the top right("定位")to navigate to the different place with a red line box on the content that differs for this opinion
+    2.another pdf/docx display component to show modified content, this component could review the file, a locate button on the top right("定位")to navigate to the different place with a red line box on the content that differs for this opinion
+
+
+
+After testing, Module 1, rule set management have following update needs:
+1. change rule group management to a hierarchy structure, rule group can have sub rule groups, and sub rule groups can have sub rule groups, when create new rule group, parent rule group should be selected, if no rule group selected, new rule group will be created as a top level rule group. 
+This change will have a impact on module 3 and module 4, for module 3, when starting reviewing process, multiple rule groups could be selected(or single group like now), for module 4, when starting reviewing process, all the results from selected rule groups will be listed in the review result list.
+
+
+
+After testing, Module 2, files upload have following update needs:
+1. add a button and a page to see the details of chunks for the file after vectorizing, use could see, the file is aplited to how many chunks, and each chunk is how many sentences, and how many words, click each chunk, could see what the original content is.
+
+after testing module 3, reviewing center have following update needs:
+1. 

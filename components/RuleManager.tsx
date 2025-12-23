@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useResizable } from '../hooks/useResizable';
 import { Rule, RuleGroup } from '../types';
-import { Upload, Plus, Trash2, Loader2, FolderPlus, Folder, Edit2, Download, FileUp, X, Check } from 'lucide-react';
+import { Upload, Plus, Trash2, Loader2, FolderPlus, Folder, Edit2, Download, FileUp, X, Check, ChevronRight, ChevronDown } from 'lucide-react';
 import { api } from '../services/api';
 
 // Valid options for dropdowns
@@ -13,7 +13,14 @@ export const RuleManager: React.FC = () => {
   const [rules, setRules] = useState<Rule[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<RuleGroup | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Group creation state
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupParentId, setNewGroupParentId] = useState<string>("");
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+
+  // Expanded state for tree view
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // Edit states
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -63,14 +70,41 @@ export const RuleManager: React.FC = () => {
     setIsLoading(false);
   };
 
+  const toggleExpand = (groupId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newExpanded = new Set(expandedGroups);
+    if (newExpanded.has(groupId)) {
+      newExpanded.delete(groupId);
+    } else {
+      newExpanded.add(groupId);
+    }
+    setExpandedGroups(newExpanded);
+  };
+
+  // Helper to flatten tree for dropdown
+  const flattenGroups = (groups: RuleGroup[], depth = 0): { id: string, name: string, depth: number }[] => {
+    let result: { id: string, name: string, depth: number }[] = [];
+    for (const group of groups) {
+      result.push({ id: group.id, name: group.name, depth });
+      if (group.children) {
+        result = [...result, ...flattenGroups(group.children, depth + 1)];
+      }
+    }
+    return result;
+  };
+
+  const flatGroupList = flattenGroups(groups);
+
   // ============== Group Operations ==============
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
     try {
-      const group = await api.createRuleGroup(newGroupName, "User created group");
-      setGroups([...groups, group]);
+      const parentId = newGroupParentId || undefined;
+      await api.createRuleGroup(newGroupName, "User created group", parentId);
+      await loadGroups(); // Reload to get updated tree
       setNewGroupName("");
-      setSelectedGroup(group);
+      setNewGroupParentId("");
+      setIsCreatingGroup(false);
     } catch (e: any) {
       alert(`Error creating group: ${e.message}`);
     }
@@ -79,11 +113,8 @@ export const RuleManager: React.FC = () => {
   const handleRenameGroup = async (groupId: string) => {
     if (!editGroupName.trim()) return;
     try {
-      const updated = await api.updateRuleGroup(groupId, editGroupName);
-      setGroups(prev => prev.map(g => g.id === groupId ? updated : g));
-      if (selectedGroup?.id === groupId) {
-        setSelectedGroup(updated);
-      }
+      await api.updateRuleGroup(groupId, editGroupName);
+      await loadGroups();
       setEditingGroupId(null);
       setEditGroupName("");
     } catch (e: any) {
@@ -92,16 +123,85 @@ export const RuleManager: React.FC = () => {
   };
 
   const handleDeleteGroup = async (groupId: string) => {
-    if (!confirm("删除规则组将同时删除组内所有规则，确定吗？")) return;
+    if (!confirm("删除规则组将同时删除其所有子组及组内规则，确定吗？")) return;
     try {
       await api.deleteRuleGroup(groupId);
-      setGroups(prev => prev.filter(g => g.id !== groupId));
+      await loadGroups();
       if (selectedGroup?.id === groupId) {
         setSelectedGroup(null);
       }
     } catch (e: any) {
       alert(`Delete failed: ${e.message}`);
     }
+  };
+
+  // Recursive Tree Item Component
+  const GroupTreeItem = ({ group, depth = 0 }: { group: RuleGroup, depth?: number }) => {
+    const hasChildren = group.children && group.children.length > 0;
+    const isExpanded = expandedGroups.has(group.id);
+    const isSelected = selectedGroup?.id === group.id;
+    const isEditing = editingGroupId === group.id;
+
+    return (
+      <div className="select-none">
+        <div
+          onClick={() => !isEditing && setSelectedGroup(group)}
+          className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+        >
+          <div className="flex items-center gap-1 mr-1" onClick={(e) => hasChildren && toggleExpand(group.id, e)}>
+            {hasChildren ? (
+              isExpanded ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />
+            ) : (
+              <div className="w-3" />
+            )}
+          </div>
+
+          {isEditing ? (
+            <div className="flex items-center gap-1 flex-1" onClick={e => e.stopPropagation()}>
+              <input
+                className="flex-1 text-sm border rounded px-2 py-1 min-w-0"
+                value={editGroupName}
+                onChange={e => setEditGroupName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleRenameGroup(group.id)}
+                autoFocus
+                onClick={e => e.stopPropagation()}
+              />
+              <button onClick={() => handleRenameGroup(group.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+                <Check className="w-3 h-3" />
+              </button>
+              <button onClick={() => setEditingGroupId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Folder className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'fill-indigo-200' : ''}`} />
+                <span className="truncate text-sm font-medium">{group.name}</span>
+              </div>
+              <div className="hidden group-hover:flex items-center gap-1 opacity-0 hover:opacity-100">
+                <button onClick={(e) => { e.stopPropagation(); setEditingGroupId(group.id); setEditGroupName(group.name); }} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
+                  <Edit2 className="w-3 h-3" />
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group.id); }} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {hasChildren && isExpanded && (
+          <div>
+            {group.children!.map(child => (
+              <GroupTreeItem key={child.id} group={child} depth={depth + 1} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // ============== Rule Operations ==============
@@ -182,12 +282,6 @@ export const RuleManager: React.FC = () => {
     }
   };
 
-  const startEditGroup = (group: RuleGroup, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingGroupId(group.id);
-    setEditGroupName(group.name);
-  };
-
   const startEditRule = (rule: Rule) => {
     setEditingRuleId(rule.id);
     setEditRuleData({
@@ -218,67 +312,54 @@ export const RuleManager: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-[700px]">
-        {/* Left Sidebar: Groups */}
+        {/* Left Sidebar: Groups Tree */}
         <div className="md:col-span-3 flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="p-4 bg-slate-50 border-b border-slate-200">
-            <h3 className="font-semibold text-slate-700 mb-2">规则组</h3>
-            <div className="flex gap-2">
-              <input
-                className="flex-1 text-sm border rounded px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="新建规则组名称"
-                value={newGroupName}
-                onChange={e => setNewGroupName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreateGroup()}
-              />
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-semibold text-slate-700">规则组</h3>
               <button
-                onClick={handleCreateGroup}
-                className="p-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
-                title="创建规则组"
+                onClick={() => setIsCreatingGroup(!isCreatingGroup)}
+                className={`p-1.5 rounded transition-colors ${isCreatingGroup ? 'bg-slate-200 text-slate-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                title="新建规则组"
               >
-                <Plus className="w-4 h-4" />
+                {isCreatingGroup ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               </button>
             </div>
+
+            {isCreatingGroup && (
+              <div className="space-y-2 bg-white p-2 rounded border border-indigo-100 shadow-sm mb-2">
+                <input
+                  className="w-full text-sm border rounded px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="规则组名称"
+                  value={newGroupName}
+                  onChange={e => setNewGroupName(e.target.value)}
+                  autoFocus
+                />
+                <select
+                  className="w-full text-sm border rounded px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={newGroupParentId}
+                  onChange={e => setNewGroupParentId(e.target.value)}
+                >
+                  <option value="">(无父级 - 顶级组)</option>
+                  {flatGroupList.map(g => (
+                    <option key={g.id} value={g.id}>
+                      {'\u00A0'.repeat(g.depth * 2)}{g.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleCreateGroup}
+                  className="w-full py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
+                >
+                  确认创建
+                </button>
+              </div>
+            )}
           </div>
+
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {groups.map(g => (
-              <div
-                key={g.id}
-                onClick={() => !editingGroupId && setSelectedGroup(g)}
-                className={`p-3 rounded-lg cursor-pointer flex items-center justify-between text-sm font-medium transition-colors group ${selectedGroup?.id === g.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                {editingGroupId === g.id ? (
-                  <div className="flex items-center gap-1 flex-1" onClick={e => e.stopPropagation()}>
-                    <input
-                      className="flex-1 text-sm border rounded px-2 py-1"
-                      value={editGroupName}
-                      onChange={e => setEditGroupName(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleRenameGroup(g.id)}
-                      autoFocus
-                    />
-                    <button onClick={() => handleRenameGroup(g.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
-                      <Check className="w-3 h-3" />
-                    </button>
-                    <button onClick={() => setEditingGroupId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <Folder className="w-4 h-4 flex-shrink-0" />
-                      <span className="truncate">{g.name}</span>
-                    </div>
-                    <div className="hidden group-hover:flex items-center gap-1">
-                      <button onClick={(e) => startEditGroup(g, e)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); handleDeleteGroup(g.id); }} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+              <GroupTreeItem key={g.id} group={g} />
             ))}
             {groups.length === 0 && <div className="text-center text-xs text-slate-400 p-4">暂无规则组</div>}
           </div>

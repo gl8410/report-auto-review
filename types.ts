@@ -17,6 +17,8 @@ export interface RuleGroup {
   id: string;
   name: string;
   description?: string;
+  parent_id?: string;
+  children?: RuleGroup[];
   created_at?: string;
 }
 
@@ -37,6 +39,15 @@ export interface Document {
   status: 'UPLOADED' | 'PARSING' | 'INDEXED' | 'FAILED';
   meta_info?: string;
   upload_time: string;
+}
+
+export interface DocumentChunk {
+  id: string;
+  document_id: string;
+  chunk_index: number;
+  content: string;
+  word_count: number;
+  sentence_count: number;
 }
 
 export interface ReviewTask {
@@ -81,8 +92,43 @@ export enum AppStep {
   Rules = 'RULES',
   Upload = 'UPLOAD',
   Review = 'REVIEW',
-  Report = 'REPORT'
+  Report = 'REPORT',
+  HistoryAnalysis = 'HISTORY_ANALYSIS'
 }
+
+export interface HistoryAnalysisTask {
+  id: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  draft_filenames: string; // JSON string
+  approved_filenames: string; // JSON string
+  created_at: string;
+}
+
+export interface InferredOpinion {
+  id: string;
+  task_id: string;
+  opinion: string;
+  evidence: string | null;
+  clause: string | null;
+  risk_level: string;
+  review_type?: string;
+  draft_file_location?: string;  // JSON string
+  approved_file_location?: string;  // JSON string
+  status: 'PENDING' | 'ADDED' | 'IGNORED' | 'DELETED';
+  created_at: string;
+}
+
+export interface FileLocation {
+  filename: string;
+  page: number;
+  bbox?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
 
 export interface UploadedFile {
   data: string;

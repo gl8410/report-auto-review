@@ -18,3 +18,14 @@ View your app in AI Studio: https://ai.studio/apps/drive/13Q_KQxhIxbtIwSKr5tqNPx
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Run Backend
+
+**Prerequisites:** Python 3.10+
+
+1. Navigate to the backend directory:
+   `cd backend`
+2. Install dependencies:
+   `pip install -r requirements.txt`
+3. Run the backend server:
+   `uvicorn backend.main:app --reload`

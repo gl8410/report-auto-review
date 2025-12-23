@@ -1,0 +1,21 @@
+from sqlmodel import SQLModel, create_engine, Session
+from typing import Generator
+from backend.core.config import settings
+
+# Create engine with connection pool settings
+engine = create_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
+)
+
+def init_db() -> None:
+    """Initialize database tables."""
+    SQLModel.metadata.create_all(engine)
+
+def get_session() -> Generator[Session, None, None]:
+    """Dependency to get database session."""
+    with Session(engine) as session:
+        yield session

@@ -10,11 +10,12 @@ from sqlmodel.pool import StaticPool
 
 import sys
 import os
+# Add backend directory to sys.path so we can import backend package
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import app
-from database import get_session
-
+from backend.main import app
+from backend.api.deps import get_session
+from backend.models import * # Import all models to register with SQLModel
 
 # Create in-memory SQLite engine for testing
 TEST_DATABASE_URL = "sqlite://"
@@ -53,4 +54,3 @@ def client_fixture(engine) -> Generator[TestClient, None, None]:
         yield client
     
     app.dependency_overrides.clear()
-

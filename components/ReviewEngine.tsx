@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../services/api';
 import { Document, RuleGroup } from '../types';
-import { Loader2, Play, CheckCircle2, AlertCircle, FileText, Shield, XCircle, Clock, BarChart3, RefreshCw } from 'lucide-react';
+import { Loader2, Play, CheckCircle2, AlertCircle, FileText, Shield, XCircle, Clock, BarChart3, RefreshCw, CheckSquare, Square } from 'lucide-react';
 
 interface ReviewEngineProps {
   onGoToReports: () => void;
@@ -11,6 +11,7 @@ interface TaskDetails {
   id: string;
   document_name: string;
   rule_group_name: string;
+  rule_group_names?: string;
   status: string;
   progress: number;
   results_count: number;
@@ -28,7 +29,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
   const [docs, setDocs] = useState<Document[]>([]);
   const [groups, setGroups] = useState<RuleGroup[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>('');
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('');
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
 
   // Execution State
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -112,13 +113,13 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
   }, [activeTaskId]);
 
   const startReview = async () => {
-    if (!selectedDocId || !selectedGroupId) return;
+    if (!selectedDocId || selectedGroupIds.length === 0) return;
     setError(null);
     setLoading(true);
     setTaskDetails(null);
 
     try {
-      const result = await api.startReview(selectedDocId, selectedGroupId);
+      const result = await api.startReview(selectedDocId, selectedGroupIds);
       setActiveTaskId(result.task_id);
       setTotalRules(result.total_rules);
       // Save to localStorage so we can restore if user navigates away
@@ -134,7 +135,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
     setActiveTaskId(null);
     setTaskDetails(null);
     setSelectedDocId('');
-    setSelectedGroupId('');
+    setSelectedGroupIds([]);
     setTotalRules(0);
     setError(null);
     // Clear from localStorage
@@ -153,6 +154,30 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
     }
   };
 
+  const toggleGroupSelection = (groupId: string) => {
+    setSelectedGroupIds(prev => {
+      if (prev.includes(groupId)) {
+        return prev.filter(id => id !== groupId);
+      } else {
+        return [...prev, groupId];
+      }
+    });
+  };
+
+  // Helper to flatten groups for list view
+  const flattenGroups = (groups: RuleGroup[], depth = 0): { id: string, name: string, depth: number }[] => {
+    let result: { id: string, name: string, depth: number }[] = [];
+    for (const group of groups) {
+      result.push({ id: group.id, name: group.name, depth });
+      if (group.children) {
+        result = [...result, ...flattenGroups(group.children, depth + 1)];
+      }
+    }
+    return result;
+  };
+
+  const flatGroups = flattenGroups(groups);
+
   // Show loading while checking for active task on mount
   if (restoringTask) {
     return (
@@ -164,10 +189,13 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
   }
 
   if (activeTaskId && taskDetails) {
-    const { status, progress, stats, document_name, rule_group_name, results_count } = taskDetails;
+    const { status, progress, stats, document_name, rule_group_name, rule_group_names, results_count } = taskDetails;
     const isCompleted = status === 'COMPLETED';
     const isFailed = status === 'FAILED';
     const isCancelled = status === 'CANCELLED';
+
+    // Display combined names if available, otherwise fallback to single name
+    const displayGroupName = rule_group_names || rule_group_name;
 
     return (
       <div className="max-w-3xl mx-auto mt-8 bg-white p-8 rounded-xl shadow-lg border border-slate-200">
@@ -189,7 +217,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
             </div>
             <div>
               <span className="text-slate-500">规则组：</span>
-              <span className="font-medium text-slate-800">{rule_group_name}</span>
+              <span className="font-medium text-slate-800" title={displayGroupName}>{displayGroupName}</span>
             </div>
           </div>
         </div>
@@ -199,9 +227,9 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
           <div className="flex mb-2 items-center justify-between">
             <div className="flex items-center gap-2">
               <span className={`text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full ${isCompleted ? 'text-emerald-600 bg-emerald-50' :
-                  isFailed ? 'text-red-600 bg-red-50' :
-                    isCancelled ? 'text-slate-600 bg-slate-50' :
-                      'text-indigo-600 bg-indigo-50'
+                isFailed ? 'text-red-600 bg-red-50' :
+                  isCancelled ? 'text-slate-600 bg-slate-50' :
+                    'text-indigo-600 bg-indigo-50'
                 }`}>
                 {status === 'PROCESSING' ? '处理中' : status === 'PENDING' ? '等待中' : status === 'COMPLETED' ? '已完成' : status === 'CANCELLED' ? '已终止' : '失败'}
               </span>
@@ -343,31 +371,46 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
         </div>
 
         {/* Rule Group Selection */}
-        <div className={`p-6 rounded-xl border-2 transition-all ${selectedGroupId ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
+        <div className={`p-6 rounded-xl border-2 transition-all ${selectedGroupIds.length > 0 ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700"><Shield className="w-6 h-6" /></div>
             <h3 className="font-semibold text-lg text-slate-800">2. 选择规则组</h3>
           </div>
-          <select
-            className="w-full p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            value={selectedGroupId}
-            onChange={(e) => setSelectedGroupId(e.target.value)}
-          >
-            <option value="">-- 选择规则组 --</option>
-            {groups.map(g => (
-              <option key={g.id} value={g.id}>{g.name}</option>
-            ))}
-          </select>
-          {groups.length === 0 && (
-            <p className="text-xs text-amber-600 mt-2 flex items-center"><AlertCircle className="w-3 h-3 mr-1" /> 暂无规则组，请先创建规则组</p>
-          )}
+
+          <div className="border border-slate-300 rounded-lg bg-white overflow-hidden">
+            <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+              {flatGroups.map(g => (
+                <div
+                  key={g.id}
+                  className={`flex items-center p-2 rounded cursor-pointer hover:bg-slate-50 ${selectedGroupIds.includes(g.id) ? 'bg-indigo-50' : ''}`}
+                  style={{ paddingLeft: `${g.depth * 20 + 8}px` }}
+                  onClick={() => toggleGroupSelection(g.id)}
+                >
+                  <div className={`mr-2 ${selectedGroupIds.includes(g.id) ? 'text-indigo-600' : 'text-slate-400'}`}>
+                    {selectedGroupIds.includes(g.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                  </div>
+                  <span className={`text-sm ${selectedGroupIds.includes(g.id) ? 'text-indigo-700 font-medium' : 'text-slate-600'}`}>
+                    {g.name}
+                  </span>
+                </div>
+              ))}
+              {groups.length === 0 && (
+                <div className="p-4 text-center text-xs text-amber-600 flex items-center justify-center">
+                  <AlertCircle className="w-3 h-3 mr-1" /> 暂无规则组
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mt-2 ml-1">
+            已选择 {selectedGroupIds.length} 个规则组
+          </p>
         </div>
       </div>
 
       <div className="flex justify-center pt-6">
         <button
           onClick={startReview}
-          disabled={!selectedDocId || !selectedGroupId || loading}
+          disabled={!selectedDocId || selectedGroupIds.length === 0 || loading}
           className="flex items-center px-8 py-4 bg-indigo-600 text-white text-lg font-bold rounded-xl hover:bg-indigo-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
         >
           {loading ? (

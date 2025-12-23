@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, FileText, Play, BarChart3 } from 'lucide-react';
+import { ShieldCheck, FileText, Play, BarChart3, History } from 'lucide-react';
 import { AppStep } from '../types';
 
 interface LayoutProps {
@@ -13,6 +13,7 @@ const steps = [
   { id: AppStep.Upload, label: '文档仓库', icon: FileText },
   { id: AppStep.Review, label: '审查中心', icon: Play },
   { id: AppStep.Report, label: '审查结果', icon: BarChart3 },
+  { id: AppStep.HistoryAnalysis, label: '历史分析', icon: History },
 ];
 
 export const Layout: React.FC<LayoutProps> = ({ currentStep, onNavigate, children }) => {
@@ -33,15 +34,15 @@ export const Layout: React.FC<LayoutProps> = ({ currentStep, onNavigate, childre
             {steps.map((step) => {
               const Icon = step.icon;
               const isActive = currentStep === step.id;
-              
+
               return (
                 <button
                   key={step.id}
                   onClick={() => onNavigate(step.id)}
                   className={`
                     flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
-                    ${isActive 
-                      ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100' 
+                    ${isActive
+                      ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100'
                       : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
                     }
                   `}
