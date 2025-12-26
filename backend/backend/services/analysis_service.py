@@ -213,30 +213,35 @@ class AnalysisService:
         return FileResponse(file_path, media_type=media_type)
 
     @staticmethod
-    def convert_opinion_to_rule(session: Session, opinion_id: str, data: ConvertToRuleRequest) -> Rule:
-        """Convert an opinion to a rule in the specified group."""
+    def convert_opinion_to_rule(session: Session, opinion_id: str, data: ConvertToRuleRequest) -> List[Rule]:
+        """Convert an opinion to a rule in the specified groups."""
         op = session.get(InferredOpinion, opinion_id)
         if not op:
             raise HTTPException(status_code=404, detail="Opinion not found")
 
-        group = session.get(RuleGroup, data.rule_group_id)
-        if not group:
-            raise HTTPException(status_code=404, detail="Rule group not found")
+        created_rules = []
+        for group_id in data.rule_group_ids:
+            group = session.get(RuleGroup, group_id)
+            if not group:
+                continue # Skip invalid groups or raise error? Let's skip for robustness
 
-        # Create Rule
-        rule = Rule(
-            group_id=data.rule_group_id,
-            clause_number=op.clause or "N/A",
-            content=op.opinion,
-            review_type=op.review_type or "内容完整性",  # Use opinion's review_type or default
-            risk_level=op.risk_level
-        )
-        session.add(rule)
+            # Create Rule
+            rule = Rule(
+                group_id=group_id,
+                clause_number=op.clause or "N/A",
+                content=op.opinion,
+                review_type=op.review_type or "内容完整性",  # Use opinion's review_type or default
+                risk_level=op.risk_level
+            )
+            session.add(rule)
+            created_rules.append(rule)
 
         # Update Opinion Status
         op.status = OpinionStatus.ADDED.value
         session.add(op)
 
         session.commit()
-        session.refresh(rule)
-        return rule
+        for r in created_rules:
+            session.refresh(r)
+            
+        return created_rules

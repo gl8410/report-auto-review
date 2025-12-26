@@ -5,6 +5,7 @@ import { DocumentUploader } from './components/DocumentUploader';
 import { ReviewEngine } from './components/ReviewEngine';
 import { ReportViewer } from './components/ReportViewer';
 import { HistoryAnalysis } from './components/HistoryAnalysis';
+import { ComparisonManager } from './components/ComparisonManager';
 import { AppStep } from './types';
 
 function App() {
@@ -22,6 +23,8 @@ function App() {
         return <ReportViewer />;
       case AppStep.HistoryAnalysis:
         return <HistoryAnalysis />;
+      case AppStep.Comparison:
+        return <ComparisonManager />;
       default:
         return <RuleManager />;
     }

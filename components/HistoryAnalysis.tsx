@@ -1,8 +1,74 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HistoryAnalysisTask, InferredOpinion, RuleGroup } from '../types';
 import { api } from '../services/api';
-import { FileUp, Loader2, AlertCircle, CheckCircle2, XCircle, ArrowRight, Save, Trash2, Edit2, FileText, RefreshCw } from 'lucide-react';
+import { FileUp, Loader2, AlertCircle, CheckCircle2, XCircle, ArrowRight, Save, Trash2, Edit2, FileText, RefreshCw, ChevronRight, ChevronDown, Folder } from 'lucide-react';
 import { DocumentViewer } from './DocumentViewer';
+
+interface GroupTreeCheckboxProps {
+    group: RuleGroup;
+    depth?: number;
+    expandedGroups: Set<string>;
+    selectedGroupIds: string[];
+    onToggleExpand: (id: string) => void;
+    onCheck: (id: string, checked: boolean) => void;
+}
+
+const GroupTreeCheckbox: React.FC<GroupTreeCheckboxProps> = ({ 
+    group, 
+    depth = 0, 
+    expandedGroups, 
+    selectedGroupIds, 
+    onToggleExpand, 
+    onCheck 
+}) => {
+    const hasChildren = group.children && group.children.length > 0;
+    const isExpanded = expandedGroups.has(group.id);
+    const isSelected = selectedGroupIds.includes(group.id);
+
+    return (
+        <div className="select-none">
+            <div
+                className="flex items-center p-2 hover:bg-slate-50 rounded"
+                style={{ paddingLeft: `${depth * 20 + 8}px` }}
+            >
+                <div
+                    className="mr-2 cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); hasChildren && onToggleExpand(group.id); }}
+                >
+                    {hasChildren ? (
+                        isExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />
+                    ) : <div className="w-4" />}
+                </div>
+
+                <label className="flex items-center cursor-pointer flex-1">
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={e => onCheck(group.id, e.target.checked)}
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 mr-2"
+                    />
+                    <Folder className="w-4 h-4 text-indigo-200 mr-2 fill-indigo-200" />
+                    <span className="text-sm text-slate-700">{group.name}</span>
+                </label>
+            </div>
+            {hasChildren && isExpanded && (
+                <div>
+                    {group.children!.map(child => (
+                        <GroupTreeCheckbox 
+                            key={child.id} 
+                            group={child} 
+                            depth={depth + 1}
+                            expandedGroups={expandedGroups}
+                            selectedGroupIds={selectedGroupIds}
+                            onToggleExpand={onToggleExpand}
+                            onCheck={onCheck}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 export const HistoryAnalysis: React.FC = () => {
     // State
@@ -17,7 +83,12 @@ export const HistoryAnalysis: React.FC = () => {
 
     // Rule Groups for "Add to Rule Base"
     const [groups, setGroups] = useState<RuleGroup[]>([]);
-    const [selectedGroupId, setSelectedGroupId] = useState<string>('');
+    
+    // Modal State
+    const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+    const [targetOpinionId, setTargetOpinionId] = useState<string | null>(null);
+    const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
     // Editing State
     const [editingOpinionId, setEditingOpinionId] = useState<string | null>(null);
@@ -67,11 +138,6 @@ export const HistoryAnalysis: React.FC = () => {
             return;
         }
 
-        if (!selectedGroupId) {
-            setError("请选择目标规则组");
-            return;
-        }
-
         setLoading(true);
         setError(null);
         try {
@@ -90,7 +156,6 @@ export const HistoryAnalysis: React.FC = () => {
         setOpinions([]);
         setDraftFiles([]);
         setApprovedFiles([]);
-        setSelectedGroupId('');
         localStorage.removeItem('ads_history_task_id');
     };
 
@@ -126,16 +191,43 @@ export const HistoryAnalysis: React.FC = () => {
         }
     };
 
-    const handleAddToRule = async (op: InferredOpinion) => {
-        if (!selectedGroupId) {
-            alert("请先选择目标规则组");
+    const handleAddToRuleClick = (op: InferredOpinion) => {
+        setTargetOpinionId(op.id);
+        setSelectedGroupIds([]);
+        setIsGroupModalOpen(true);
+    };
+
+    const toggleExpand = (groupId: string) => {
+        const newExpanded = new Set(expandedGroups);
+        if (newExpanded.has(groupId)) {
+            newExpanded.delete(groupId);
+        } else {
+            newExpanded.add(groupId);
+        }
+        setExpandedGroups(newExpanded);
+    };
+
+    const handleGroupCheck = (groupId: string, checked: boolean) => {
+        if (checked) {
+            setSelectedGroupIds(prev => [...prev, groupId]);
+        } else {
+            setSelectedGroupIds(prev => prev.filter(id => id !== groupId));
+        }
+    };
+
+    const handleConfirmAddToRule = async () => {
+        if (!targetOpinionId || selectedGroupIds.length === 0) {
+            alert("请至少选择一个规则组");
             return;
         }
         try {
-            await api.convertOpinionToRule(op.id, selectedGroupId);
+            await api.convertOpinionToRule(targetOpinionId, selectedGroupIds);
             setOpinions(prev => prev.map(o =>
-                o.id === op.id ? { ...o, status: 'ADDED' } : o
+                o.id === targetOpinionId ? { ...o, status: 'ADDED' } : o
             ));
+            setIsGroupModalOpen(false);
+            setTargetOpinionId(null);
+            setSelectedGroupIds([]);
         } catch (e: any) {
             setError("添加规则失败: " + e.message);
         }
@@ -147,22 +239,6 @@ export const HistoryAnalysis: React.FC = () => {
             <div className="text-center">
                 <h2 className="text-3xl font-bold text-slate-900">历史报告智能分析</h2>
                 <p className="text-slate-500 mt-2">上传原始稿件和修改后稿件，AI将自动提取专家审查意见</p>
-            </div>
-
-            {/* Rule Group Selection - Now at the top */}
-            <div className="bg-white p-6 rounded-xl border-2 border-indigo-200 shadow-sm">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    选择目标规则组 <span className="text-red-500">*</span>
-                </label>
-                <select
-                    value={selectedGroupId}
-                    onChange={e => setSelectedGroupId(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                    <option value="">-- 请选择规则组 --</option>
-                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
-                <p className="text-xs text-slate-500 mt-2">提取的审查意见将被添加到此规则组</p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-8">
@@ -226,7 +302,7 @@ export const HistoryAnalysis: React.FC = () => {
             <div className="text-center">
                 <button
                     onClick={handleStartAnalysis}
-                    disabled={loading || draftFiles.length === 0 || approvedFiles.length === 0 || !selectedGroupId}
+                    disabled={loading || draftFiles.length === 0 || approvedFiles.length === 0}
                     className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 disabled:opacity-50 shadow-lg flex items-center mx-auto"
                 >
                     {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <RefreshCw className="w-5 h-5 mr-2" />}
@@ -245,7 +321,21 @@ export const HistoryAnalysis: React.FC = () => {
     const renderWorkspace = () => {
         const activeOpinions = opinions.filter(o => o.status !== 'DELETED');
         const selectedOpinion = opinions.find(o => o.id === selectedOpinionId) || activeOpinions[0];
-        const selectedGroup = groups.find(g => g.id === selectedGroupId);
+
+        // Parse evidence for highlighting
+        let draftHighlight = '';
+        let approvedHighlight = '';
+        if (selectedOpinion?.evidence) {
+            const evidence = selectedOpinion.evidence;
+            const draftMatch = evidence.match(/【修改前】([\s\S]*?)(?=【修改后】|$)/);
+            const approvedMatch = evidence.match(/【修改后】([\s\S]*?)$/);
+            
+            if (draftMatch) draftHighlight = draftMatch[1].trim();
+            if (approvedMatch) approvedHighlight = approvedMatch[1].trim();
+        }
+
+        const draftFilenames = task?.draft_filenames ? JSON.parse(task.draft_filenames) : [];
+        const approvedFilenames = task?.approved_filenames ? JSON.parse(task.approved_filenames) : [];
 
         return (
             <div className="h-[calc(100vh-100px)] flex flex-col">
@@ -259,12 +349,6 @@ export const HistoryAnalysis: React.FC = () => {
                         {loading && <span className="text-sm text-slate-500 flex items-center"><Loader2 className="w-4 h-4 mr-1 animate-spin" /> 分析中...</span>}
                     </div>
                     <div className="flex items-center gap-4">
-                        {selectedGroup && (
-                            <div className="text-sm">
-                                <span className="text-slate-500">目标规则组：</span>
-                                <span className="font-semibold text-slate-800">{selectedGroup.name}</span>
-                            </div>
-                        )}
                         <button onClick={handleReset} className="text-slate-500 hover:text-slate-700 text-sm">
                             重新开始
                         </button>
@@ -339,7 +423,7 @@ export const HistoryAnalysis: React.FC = () => {
                                             </span>
                                         ) : (
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); handleAddToRule(op); }}
+                                                onClick={(e) => { e.stopPropagation(); handleAddToRuleClick(op); }}
                                                 className="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-semibold hover:bg-indigo-700 transition-colors whitespace-nowrap"
                                             >
                                                 添加到规则库
@@ -398,25 +482,16 @@ export const HistoryAnalysis: React.FC = () => {
                     <div className="w-1/2 bg-slate-100 flex flex-col overflow-hidden">
                         {selectedOpinion && task ? (
                             <div className="flex-1 flex flex-col">
-                                {/* Original Document Viewer (Top) */}
-                                <div className="h-1/2 border-b-2 border-slate-300">
-                                    <DocumentViewer
-                                        taskId={task.id}
-                                        fileType="draft"
-                                        fileIndex={0}
-                                        location={selectedOpinion.draft_file_location ? JSON.parse(selectedOpinion.draft_file_location) : null}
-                                        title="原始稿件（修改前）"
-                                    />
-                                </div>
-
-                                {/* Modified Document Viewer (Bottom) */}
-                                <div className="h-1/2">
+                                {/* Modified Document Viewer (Full Height) */}
+                                <div className="h-full">
                                     <DocumentViewer
                                         taskId={task.id}
                                         fileType="approved"
                                         fileIndex={0}
+                                        filename={approvedFilenames[0] || 'unknown.pdf'}
                                         location={selectedOpinion.approved_file_location ? JSON.parse(selectedOpinion.approved_file_location) : null}
                                         title="修改后稿件（修改后）"
+                                        highlightText={approvedHighlight}
                                     />
                                 </div>
                             </div>
@@ -427,6 +502,42 @@ export const HistoryAnalysis: React.FC = () => {
                         )}
                     </div>
                 </div>
+
+                {/* Group Selection Modal */}
+                {isGroupModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-xl p-6 w-[500px] max-h-[80vh] flex flex-col shadow-2xl">
+                            <h3 className="text-lg font-bold mb-4">选择目标规则组</h3>
+                            <div className="flex-1 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
+                                {groups.map(g => (
+                                    <GroupTreeCheckbox
+                                        key={g.id}
+                                        group={g}
+                                        expandedGroups={expandedGroups}
+                                        selectedGroupIds={selectedGroupIds}
+                                        onToggleExpand={toggleExpand}
+                                        onCheck={handleGroupCheck}
+                                    />
+                                ))}
+                            </div>
+                            <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
+                                <button
+                                    onClick={() => setIsGroupModalOpen(false)}
+                                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleConfirmAddToRule}
+                                    disabled={selectedGroupIds.length === 0}
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                    确认添加
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };

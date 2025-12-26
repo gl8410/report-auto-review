@@ -93,7 +93,8 @@ export enum AppStep {
   Upload = 'UPLOAD',
   Review = 'REVIEW',
   Report = 'REPORT',
-  HistoryAnalysis = 'HISTORY_ANALYSIS'
+  HistoryAnalysis = 'HISTORY_ANALYSIS',
+  Comparison = 'COMPARISON'
 }
 
 export interface HistoryAnalysisTask {
@@ -139,4 +140,24 @@ export enum ReviewStatus {
   Pass = 'Pass',
   Fail = 'Fail',
   NotApplicable = 'N/A'
+}
+
+export interface ComparisonDocument {
+  id: string;
+  filename: string;
+  storage_path?: string;
+  status: 'UPLOADED' | 'PARSING' | 'INDEXED' | 'FAILED';
+  description?: string;
+  upload_time: string;
+}
+
+export interface ComparisonResult {
+  id: string;
+  task_id: string;
+  comparison_document_id: string;
+  conflict_score: number;
+  summary: string | null;
+  details: string | null; // JSON string
+  created_at: string;
+  document_name?: string; // Enriched field
 }

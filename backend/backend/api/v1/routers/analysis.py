@@ -44,9 +44,9 @@ async def get_analysis_file(
 
 @router.post("/history-analysis/opinions/{opinion_id}/convert")
 def convert_opinion_to_rule(
-    opinion_id: str, 
-    data: ConvertToRuleRequest, 
+    opinion_id: str,
+    data: ConvertToRuleRequest,
     session: Session = Depends(get_session)
 ):
-    """Convert an opinion to a rule in the specified group."""
+    """Convert an opinion to rules in the specified groups."""
     return AnalysisService.convert_opinion_to_rule(session, opinion_id, data)

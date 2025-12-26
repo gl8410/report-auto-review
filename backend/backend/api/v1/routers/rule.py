@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from backend.api.deps import get_session
 from backend.models.rule import RuleGroup, Rule
 from backend.models.review import ReviewTask, ReviewResultItem
+from backend.models.comparison import ComparisonResult
 from backend.schemas.rule import (
     RuleGroupCreate, RuleGroupResponse,
     RuleCreate, RuleResponse, RuleUpdate
@@ -84,6 +85,7 @@ def update_rule_group(group_id: str, data: RuleGroupCreate, session: Session = D
 
 def delete_group_recursive(session: Session, group: RuleGroup):
     """Recursively delete a group and its children."""
+    print(f"Deleting group: {group.name} ({group.id})")
     # 1. Fetch and delete children
     children = session.exec(select(RuleGroup).where(RuleGroup.parent_id == group.id)).all()
     for child in children:
@@ -91,16 +93,31 @@ def delete_group_recursive(session: Session, group: RuleGroup):
 
     # 2. Delete associated Review Tasks and their Results
     tasks = session.exec(select(ReviewTask).where(ReviewTask.rule_group_id == group.id)).all()
+    print(f"Found {len(tasks)} tasks for group {group.id}")
     for task in tasks:
+        print(f"Deleting task {task.id}")
         # Delete results for this task
         results = session.exec(select(ReviewResultItem).where(ReviewResultItem.task_id == task.id)).all()
+        print(f"  Deleting {len(results)} review results")
         for res in results:
             session.delete(res)
+            
+        # Delete comparison results for this task
+        try:
+            comp_results = session.exec(select(ComparisonResult).where(ComparisonResult.task_id == task.id)).all()
+            print(f"  Deleting {len(comp_results)} comparison results")
+            for cr in comp_results:
+                session.delete(cr)
+        except Exception as e:
+            print(f"  Error deleting comparison results: {e}")
+            # Continue deleting task even if comparison results deletion fails
+            
         # Delete the task itself
         session.delete(task)
     
     # 3. Delete all rules in this group
     rules = session.exec(select(Rule).where(Rule.group_id == group.id)).all()
+    print(f"Deleting {len(rules)} rules for group {group.id}")
     for rule in rules:
         session.delete(rule)
         
@@ -110,20 +127,40 @@ def delete_group_recursive(session: Session, group: RuleGroup):
 @router.delete("/rule-groups/{group_id}")
 def delete_rule_group(group_id: str, session: Session = Depends(get_session)):
     """Delete a rule group and all its sub-groups and rules."""
-    group = session.get(RuleGroup, group_id)
-    if not group:
-        raise HTTPException(status_code=404, detail="Rule group not found")
-    
-    delete_group_recursive(session, group)
-    session.commit()
-    return {"message": "Rule group and all sub-groups deleted"}
+    print(f"Request to delete rule group: {group_id}")
+    try:
+        group = session.get(RuleGroup, group_id)
+        if not group:
+            raise HTTPException(status_code=404, detail="Rule group not found")
+        
+        delete_group_recursive(session, group)
+        session.commit()
+        print("Deletion successful")
+        return {"message": "Rule group and all sub-groups deleted"}
+    except Exception as e:
+        print(f"Error in delete_rule_group: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_child_group_ids(session: Session, group_id: str) -> List[str]:
+    """Recursively get all child group IDs."""
+    ids = [group_id]
+    children = session.exec(select(RuleGroup).where(RuleGroup.parent_id == group_id)).all()
+    for child in children:
+        ids.extend(get_child_group_ids(session, child.id))
+    return ids
 
 # ============== Rule Endpoints ==============
 
 @router.get("/rule-groups/{group_id}/rules", response_model=List[RuleResponse])
-def get_rules(group_id: str, session: Session = Depends(get_session)):
-    """Get all rules in a group."""
-    rules = session.exec(select(Rule).where(Rule.group_id == group_id)).all()
+def get_rules(group_id: str, recursive: bool = False, session: Session = Depends(get_session)):
+    """Get all rules in a group (optionally recursive)."""
+    if recursive:
+        group_ids = get_child_group_ids(session, group_id)
+        rules = session.exec(select(Rule).where(Rule.group_id.in_(group_ids))).all()
+    else:
+        rules = session.exec(select(Rule).where(Rule.group_id == group_id)).all()
     return rules
 
 @router.post("/rule-groups/{group_id}/rules", response_model=RuleResponse)

@@ -34,6 +34,7 @@ export const RuleManager: React.FC = () => {
     review_type: '内容完整性',
     risk_level: '中风险'
   });
+  const [isConfirmingDeleteGroup, setIsConfirmingDeleteGroup] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
@@ -43,6 +44,7 @@ export const RuleManager: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    setIsConfirmingDeleteGroup(false);
     if (selectedGroup) {
       loadRules(selectedGroup.id);
     } else {
@@ -62,7 +64,7 @@ export const RuleManager: React.FC = () => {
   const loadRules = async (groupId: string) => {
     setIsLoading(true);
     try {
-      const data = await api.getRules(groupId);
+      const data = await api.getRules(groupId, true);
       setRules(data);
     } catch (e) {
       console.error("Failed to load rules", e);
@@ -397,6 +399,23 @@ export const RuleManager: React.FC = () => {
                   </button>
                   <button onClick={handleCsvExport} className="flex items-center px-3 py-2 bg-slate-50 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-100 transition-colors border border-slate-200" title="导出CSV">
                     <Download className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (isConfirmingDeleteGroup) {
+                        handleDeleteGroup(selectedGroup.id);
+                        setIsConfirmingDeleteGroup(false);
+                      } else {
+                        setIsConfirmingDeleteGroup(true);
+                      }
+                    }}
+                    className={`p-2 rounded-lg transition-all duration-200 ${isConfirmingDeleteGroup
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-100'
+                      }`}
+                    title={isConfirmingDeleteGroup ? "再次点击确认删除" : "删除当前规则组"}
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>

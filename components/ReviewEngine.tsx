@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../services/api';
-import { Document, RuleGroup } from '../types';
-import { Loader2, Play, CheckCircle2, AlertCircle, FileText, Shield, XCircle, Clock, BarChart3, RefreshCw, CheckSquare, Square } from 'lucide-react';
+import { Document, RuleGroup, ComparisonDocument } from '../types';
+import { Loader2, Play, CheckCircle2, AlertCircle, FileText, Shield, XCircle, Clock, BarChart3, RefreshCw, CheckSquare, Square, FileDiff } from 'lucide-react';
 
 interface ReviewEngineProps {
   onGoToReports: () => void;
@@ -28,8 +28,10 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
   // Selection State
   const [docs, setDocs] = useState<Document[]>([]);
   const [groups, setGroups] = useState<RuleGroup[]>([]);
+  const [compDocs, setCompDocs] = useState<ComparisonDocument[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>('');
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [selectedCompDocIds, setSelectedCompDocIds] = useState<string[]>([]);
 
   // Execution State
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -41,12 +43,14 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
 
   const loadResources = useCallback(async () => {
     try {
-      const [docsData, groupsData] = await Promise.all([
+      const [docsData, groupsData, compDocsData] = await Promise.all([
         api.getDocuments(),
-        api.getRuleGroups()
+        api.getRuleGroups(),
+        api.getComparisonDocuments()
       ]);
       setDocs(docsData);
       setGroups(groupsData);
+      setCompDocs(compDocsData);
     } catch (e) {
       console.error("Failed to load resources", e);
     }
@@ -113,13 +117,28 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
   }, [activeTaskId]);
 
   const startReview = async () => {
-    if (!selectedDocId || selectedGroupIds.length === 0) return;
+    if (!selectedDocId || (selectedGroupIds.length === 0 && selectedCompDocIds.length === 0)) return;
     setError(null);
     setLoading(true);
     setTaskDetails(null);
 
     try {
-      const result = await api.startReview(selectedDocId, selectedGroupIds);
+      // Note: api.startReview needs to be updated to accept comparisonDocIds
+      // We'll need to update api.ts first or pass it in a way the backend accepts if we modified api.ts
+      // Assuming api.startReview signature is updated or we pass an object
+      // Let's check api.ts again. It currently takes (documentId, ruleGroupIds).
+      // We need to update api.ts startReview to accept comparisonDocIds.
+      // But for now, let's assume we will update api.ts in the next step or use 'any' cast if needed.
+      // Actually I should have updated api.ts startReview method.
+      // Let's update api.ts startReview method first.
+      // Wait, I can't update api.ts in the middle of this replacement.
+      // I will update api.ts startReview signature in the next step.
+      // For now I will call it with extra argument and let TS complain or cast it.
+      // But wait, I am replacing the whole file content.
+
+      // Let's assume api.startReview is updated.
+      const result = await (api as any).startReview(selectedDocId, selectedGroupIds, selectedCompDocIds);
+
       setActiveTaskId(result.task_id);
       setTotalRules(result.total_rules);
       // Save to localStorage so we can restore if user navigates away
@@ -136,6 +155,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
     setTaskDetails(null);
     setSelectedDocId('');
     setSelectedGroupIds([]);
+    setSelectedCompDocIds([]);
     setTotalRules(0);
     setError(null);
     // Clear from localStorage
@@ -160,6 +180,16 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
         return prev.filter(id => id !== groupId);
       } else {
         return [...prev, groupId];
+      }
+    });
+  };
+
+  const toggleCompDocSelection = (docId: string) => {
+    setSelectedCompDocIds(prev => {
+      if (prev.includes(docId)) {
+        return prev.filter(id => id !== docId);
+      } else {
+        return [...prev, docId];
       }
     });
   };
@@ -342,13 +372,13 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
 
   // Selection View
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-6xl mx-auto space-y-8">
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-slate-900">审查中心</h2>
         <p className="text-slate-500 mt-2">选择文档和规则组，启动自动化审查任务</p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-3 gap-6">
         {/* Document Selection */}
         <div className={`p-6 rounded-xl border-2 transition-all ${selectedDocId ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
           <div className="flex items-center gap-3 mb-4">
@@ -405,12 +435,47 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
             已选择 {selectedGroupIds.length} 个规则组
           </p>
         </div>
+
+        {/* Comparison Document Selection */}
+        <div className={`p-6 rounded-xl border-2 transition-all ${selectedCompDocIds.length > 0 ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700"><FileDiff className="w-6 h-6" /></div>
+            <h3 className="font-semibold text-lg text-slate-800">3. 选择对比文件 (可选)</h3>
+          </div>
+
+          <div className="border border-slate-300 rounded-lg bg-white overflow-hidden">
+            <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+              {compDocs.filter(d => d.status === 'INDEXED').map(doc => (
+                <div
+                  key={doc.id}
+                  className={`flex items-center p-2 rounded cursor-pointer hover:bg-slate-50 ${selectedCompDocIds.includes(doc.id) ? 'bg-indigo-50' : ''}`}
+                  onClick={() => toggleCompDocSelection(doc.id)}
+                >
+                  <div className={`mr-2 ${selectedCompDocIds.includes(doc.id) ? 'text-indigo-600' : 'text-slate-400'}`}>
+                    {selectedCompDocIds.includes(doc.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                  </div>
+                  <span className={`text-sm truncate ${selectedCompDocIds.includes(doc.id) ? 'text-indigo-700 font-medium' : 'text-slate-600'}`} title={doc.filename}>
+                    {doc.filename}
+                  </span>
+                </div>
+              ))}
+              {compDocs.filter(d => d.status === 'INDEXED').length === 0 && (
+                <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center">
+                  暂无可用对比文件
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mt-2 ml-1">
+            已选择 {selectedCompDocIds.length} 个对比文件
+          </p>
+        </div>
       </div>
 
       <div className="flex justify-center pt-6">
         <button
           onClick={startReview}
-          disabled={!selectedDocId || selectedGroupIds.length === 0 || loading}
+          disabled={!selectedDocId || (selectedGroupIds.length === 0 && selectedCompDocIds.length === 0) || loading}
           className="flex items-center px-8 py-4 bg-indigo-600 text-white text-lg font-bold rounded-xl hover:bg-indigo-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
         >
           {loading ? (

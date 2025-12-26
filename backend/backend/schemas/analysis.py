@@ -24,4 +24,4 @@ class OpinionUpdate(BaseModel):
     risk_level: Optional[str] = None
     review_type: Optional[str] = None
 class ConvertToRuleRequest(BaseModel):
-    rule_group_id: str
+    rule_group_ids: List[str]

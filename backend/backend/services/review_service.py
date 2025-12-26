@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException, BackgroundTasks
 from sqlmodel import Session, select
@@ -6,8 +7,9 @@ from backend.core.db import engine
 from backend.models.review import ReviewTask, ReviewResultItem, TaskStatus
 from backend.models.document import Document, DocumentStatus
 from backend.models.rule import Rule, RuleGroup
+from backend.models.comparison import ComparisonDocument, ComparisonResult
 from backend.schemas.review import ReviewStartRequest, ResultUpdateRequest
-from backend.integrations.llm_client import generate_review_queries, compare_rule_with_context
+from backend.integrations.llm_client import generate_review_queries, compare_rule_with_context, compare_documents_chunk_wise
 from backend.integrations.vector_store import search_document_chunks
 
 async def execute_review_for_rule(
@@ -83,7 +85,7 @@ def get_all_rules_from_groups(session: Session, group_ids: List[str]) -> List[Ru
         
     return rules
 
-async def execute_review_background(task_id: str, document_id: str, rule_ids: List[str]):
+async def execute_review_background(task_id: str, document_id: str, rule_ids: List[str], comparison_doc_ids: List[str] = None):
     """Background task to execute the review process with progress updates."""
     from sqlmodel import Session as SyncSession
 
@@ -101,28 +103,28 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
             session.commit()
             return
 
-        # Get rules (fetch by IDs to ensure we have the exact set)
+        # Get rules
         rules = []
         for rid in rule_ids:
             r = session.get(Rule, rid)
             if r:
                 rules.append(r)
         
-        if not rules:
-            task.status = TaskStatus.FAILED.value
-            session.commit()
-            return
-
         # Update task to PROCESSING
         task.status = TaskStatus.PROCESSING.value
         task.start_time = datetime.now(timezone.utc)
         session.commit()
 
-        total_rules = len(rules)
+        total_steps = len(rules)
+        # Add steps for comparison if needed (simplified progress tracking)
+        # For now, we just track rule progress. Comparison will be done after or in parallel.
+        # Let's do comparison after rules.
+        
         completed = 0
 
-        print(f"[Review {task_id}] Starting review of {total_rules} rules against document '{doc.filename}'")
+        print(f"[Review {task_id}] Starting review of {len(rules)} rules against document '{doc.filename}'")
 
+        # 1. Execute Rule Review
         for i, rule in enumerate(rules):
             # Check for cancellation
             session.refresh(task)
@@ -131,7 +133,7 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                 return
 
             try:
-                print(f"[Review {task_id}] Processing rule {i+1}/{total_rules}: {rule.clause_number}")
+                print(f"[Review {task_id}] Processing rule {i+1}/{len(rules)}: {rule.clause_number}")
 
                 # Execute review for this rule
                 rule_dict = {
@@ -161,10 +163,8 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
 
                 # Update progress
                 completed += 1
-                task.progress = int((completed / total_rules) * 100)
+                task.progress = int((completed / total_steps) * 100)
                 session.commit()
-
-                print(f"[Review {task_id}] Rule {rule.clause_number}: {result['result_code']}")
 
             except Exception as e:
                 print(f"[Review {task_id}] Error processing rule {rule.clause_number}: {e}")
@@ -179,8 +179,73 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                 )
                 session.add(result_item)
                 completed += 1
-                task.progress = int((completed / total_rules) * 100)
+                task.progress = int((completed / total_steps) * 100)
                 session.commit()
+
+        # 2. Execute Comparison Review (if any)
+        if comparison_doc_ids:
+            print(f"[Review {task_id}] Starting comparison with {len(comparison_doc_ids)} documents")
+            # For each comparison document
+            for comp_id in comparison_doc_ids:
+                comp_doc = session.get(ComparisonDocument, comp_id)
+                if not comp_doc:
+                    continue
+                
+                try:
+                    # We need to iterate through chunks of the REVIEW document
+                    # and compare them with the COMPARISON document.
+                    # This is expensive. We should probably sample or use a smarter strategy.
+                    # For now, let's take the first 20 chunks of the review document as a prototype.
+                    from backend.models.chunk import DocumentChunk
+                    review_chunks = session.exec(select(DocumentChunk).where(DocumentChunk.document_id == document_id).limit(20)).all()
+                    
+                    conflicts = []
+                    
+                    for chunk in review_chunks:
+                        # Search for relevant chunks in comparison document
+                        # We need to search in the vector store using the comparison doc ID
+                        # But wait, ingest_chunks_to_chroma uses 'document_id' as metadata.
+                        # So we can search using filter={"document_id": comp_id}
+                        
+                        relevant_comp_chunks = await search_document_chunks(
+                            query=chunk.content,
+                            document_id=comp_id,
+                            n_results=3
+                        )
+                        
+                        if not relevant_comp_chunks:
+                            continue
+                            
+                        # Compare using LLM
+                        comp_result = await compare_documents_chunk_wise(
+                            target_chunk=chunk.content,
+                            reference_chunks=relevant_comp_chunks,
+                            target_filename=doc.filename,
+                            reference_filename=comp_doc.filename
+                        )
+                        
+                        if comp_result["result_code"] == "CONFLICT":
+                            conflicts.append({
+                                "chunk_index": chunk.chunk_index,
+                                "target_content": chunk.content[:100] + "...",
+                                "reasoning": comp_result["reasoning"],
+                                "evidence": comp_result["evidence"],
+                                "suggestion": comp_result["suggestion"]
+                            })
+                            
+                    # Save ComparisonResult
+                    comparison_result = ComparisonResult(
+                        task_id=task_id,
+                        comparison_document_id=comp_id,
+                        conflict_score=len(conflicts) / len(review_chunks) if review_chunks else 0.0,
+                        summary=f"Found {len(conflicts)} potential conflicts in sampled chunks.",
+                        details=json.dumps(conflicts, ensure_ascii=False)
+                    )
+                    session.add(comparison_result)
+                    session.commit()
+                    
+                except Exception as e:
+                    print(f"[Review {task_id}] Error comparing with {comp_doc.filename}: {e}")
 
         # Mark task as completed
         task.status = TaskStatus.COMPLETED.value
@@ -188,7 +253,7 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
         task.end_time = datetime.now(timezone.utc)
         session.commit()
 
-        print(f"[Review {task_id}] Review completed! {completed} rules processed.")
+        print(f"[Review {task_id}] Review completed!")
 
 class ReviewService:
     @staticmethod
@@ -240,27 +305,31 @@ class ReviewService:
         if doc.status != DocumentStatus.INDEXED.value:
             raise HTTPException(status_code=400, detail=f"Document is not indexed yet. Current status: {doc.status}")
 
-        # Validate rule groups exist
-        if not data.rule_group_ids:
-             raise HTTPException(status_code=400, detail="No rule groups selected")
+        # Validate inputs
+        if not data.rule_group_ids and not data.comparison_document_ids:
+             raise HTTPException(status_code=400, detail="No rule groups or comparison documents selected")
              
-        # Fetch all rules recursively
-        rules = get_all_rules_from_groups(session, data.rule_group_ids)
-        if not rules:
-            raise HTTPException(status_code=400, detail="Selected groups have no rules")
+        # Fetch all rules recursively if groups selected
+        rules = []
+        if data.rule_group_ids:
+            rules = get_all_rules_from_groups(session, data.rule_group_ids)
+            if not rules and not data.comparison_document_ids:
+                raise HTTPException(status_code=400, detail="Selected groups have no rules")
 
         # Get group names for display
         group_names = []
-        for gid in data.rule_group_ids:
-            g = session.get(RuleGroup, gid)
-            if g:
-                group_names.append(g.name)
+        if data.rule_group_ids:
+            for gid in data.rule_group_ids:
+                g = session.get(RuleGroup, gid)
+                if g:
+                    group_names.append(g.name)
         
         # Create task
         task = ReviewTask(
             document_id=data.document_id,
             rule_group_id=data.rule_group_ids[0] if data.rule_group_ids else None, # Store first one as primary reference
             rule_group_names=", ".join(group_names),
+            comparison_document_ids=",".join(data.comparison_document_ids) if data.comparison_document_ids else None,
             status=TaskStatus.PENDING.value,
             progress=0
         )
@@ -269,20 +338,20 @@ class ReviewService:
         session.refresh(task)
 
         # Start background execution
-        # Pass rule IDs instead of group ID to ensure we use the exact set of rules we found
         rule_ids = [r.id for r in rules]
         
         background_tasks.add_task(
             execute_review_background,
             task.id,
             data.document_id,
-            rule_ids
+            rule_ids,
+            data.comparison_document_ids
         )
 
         return {
             "task_id": task.id,
             "status": task.status,
-            "message": f"Review started for document '{doc.filename}' with {len(rules)} rules",
+            "message": f"Review started for document '{doc.filename}'",
             "total_rules": len(rules)
         }
 
@@ -311,6 +380,20 @@ class ReviewService:
         for r in results:
             if r.result_code in stats:
                 stats[r.result_code] += 1
+                
+        # Get comparison results
+        comp_results = session.exec(
+            select(ComparisonResult).where(ComparisonResult.task_id == task_id)
+        ).all()
+        
+        comp_stats = []
+        for cr in comp_results:
+            comp_doc = session.get(ComparisonDocument, cr.comparison_document_id)
+            comp_stats.append({
+                "document_name": comp_doc.filename if comp_doc else "Unknown",
+                "conflict_score": cr.conflict_score,
+                "summary": cr.summary
+            })
 
         return {
             "id": task.id,
@@ -325,7 +408,8 @@ class ReviewService:
             "end_time": task.end_time.isoformat() if task.end_time else None,
             "created_at": task.created_at.isoformat(),
             "results_count": len(results),
-            "stats": stats
+            "stats": stats,
+            "comparison_stats": comp_stats
         }
 
     @staticmethod
@@ -374,12 +458,19 @@ class ReviewService:
         ).all()
         for result in results:
             session.delete(result)
+            
+        # Delete comparison results
+        comp_results = session.exec(
+            select(ComparisonResult).where(ComparisonResult.task_id == task_id)
+        ).all()
+        for cr in comp_results:
+            session.delete(cr)
 
         # Delete task
         session.delete(task)
         session.commit()
 
-        return {"message": f"Review task and {len(results)} results deleted"}
+        return {"message": f"Review task and results deleted"}
 
     @staticmethod
     def cancel_review_task(session: Session, task_id: str) -> Dict:

@@ -10,6 +10,7 @@ interface LayoutProps {
 
 const steps = [
   { id: AppStep.Rules, label: '规则管理', icon: ShieldCheck },
+  { id: AppStep.Comparison, label: '对比文件', icon: FileText },
   { id: AppStep.Upload, label: '文档仓库', icon: FileText },
   { id: AppStep.Review, label: '审查中心', icon: Play },
   { id: AppStep.Report, label: '审查结果', icon: BarChart3 },

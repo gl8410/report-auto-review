@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useResizable } from '../hooks/useResizable';
-import { ReviewResult, ReviewTask, ResultCode } from '../types';
+import { ReviewResult, ReviewTask, ResultCode, ComparisonResult } from '../types';
 import { api } from '../services/api';
 import { CheckCircle2, XCircle, AlertCircle, Download, RefreshCw, ChevronDown, ChevronUp, ArrowLeft, FileText, Loader2, Trash2, Edit3, FileDown, X, Save, Filter, Shield, Plus } from 'lucide-react';
 import { downloadCSV } from '../services/fileUtils';
@@ -12,6 +12,8 @@ export const ReportViewer: React.FC = () => {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<ReviewTask | null>(null);
   const [results, setResults] = useState<ReviewResult[]>([]);
+  const [comparisonResults, setComparisonResults] = useState<ComparisonResult[]>([]);
+  const [activeTab, setActiveTab] = useState<'rules' | 'comparison'>('rules');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('ALL');
@@ -39,11 +41,13 @@ export const ReportViewer: React.FC = () => {
       setLoading(true);
       Promise.all([
         api.getReviewTask(selectedTaskId),
-        api.getResults(selectedTaskId)
+        api.getResults(selectedTaskId),
+        api.getComparisonResults(selectedTaskId).catch(() => []) // Handle error gracefully if endpoint fails or returns 404
       ])
-        .then(([task, res]) => {
+        .then(([task, res, compRes]) => {
           setSelectedTask(task);
           setResults(res);
+          setComparisonResults(compRes);
         })
         .catch(e => console.error(e))
         .finally(() => setLoading(false));
@@ -316,172 +320,230 @@ export const ReportViewer: React.FC = () => {
           </div>
         </div>
 
-        {/* Filter Bar */}
-        <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-4">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <span className="text-sm text-slate-600">结果:</span>
-          <div className="flex gap-2">
-            {(['ALL', 'PASS', 'REJECT', 'MANUAL_CHECK'] as FilterStatus[]).map(status => (
-              <button
-                key={status}
-                onClick={() => setFilterStatus(status)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === status
-                  ? status === 'PASS' ? 'bg-emerald-600 text-white'
-                    : status === 'REJECT' ? 'bg-red-600 text-white'
-                      : status === 'MANUAL_CHECK' ? 'bg-orange-600 text-white'
-                        : 'bg-indigo-600 text-white'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                  }`}
-              >
-                {status === 'ALL' ? '全部' : status === 'PASS' ? '通过' : status === 'REJECT' ? '不通过' : '待复核'}
-                {status !== 'ALL' && ` (${stats[status]})`}
-              </button>
-            ))}
-          </div>
-          {uniqueSources.length > 1 && (
-            <>
-              <span className="text-slate-300">|</span>
-              <span className="text-sm text-slate-600">规范来源:</span>
-              <select
-                value={filterSource}
-                onChange={(e) => setFilterSource(e.target.value)}
-                className="px-3 py-1 rounded-lg text-xs font-medium bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 max-w-[200px]"
-              >
-                <option value="ALL">全部来源 ({results.length})</option>
-                {uniqueSources.map(source => (
-                  <option key={source} value={source}>
-                    {source.length > 25 ? source.substring(0, 25) + '...' : source} ({results.filter(r => r.standard_name === source).length})
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          {(filterStatus !== 'ALL' || filterSource !== 'ALL') && (
-            <span className="text-xs text-slate-500">
-              显示 {filteredResults.length} / {results.length} 条
-            </span>
-          )}
+        {/* Tabs */}
+        <div className="px-6 border-b border-slate-200 flex gap-6">
+          <button
+            onClick={() => setActiveTab('rules')}
+            className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'rules' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            规则审查结果 ({results.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('comparison')}
+            className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'comparison' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            对比文件结果 ({comparisonResults.length})
+          </button>
         </div>
 
-        {loading ? (
-          <div className="p-12 text-center text-slate-500 flex justify-center items-center">
-            <Loader2 className="w-6 h-6 animate-spin mr-2" /> 加载中...
-          </div>
-        ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none" style={{ width: widths.clause_number }}>
-                  条款号
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'clause_number')} />
-                </th>
-                <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none" style={{ width: widths.standard_name }}>
-                  规范来源
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'standard_name')} />
-                </th>
-                <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none" style={{ width: widths.result }}>
-                  结果
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'result')} />
-                </th>
-                <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none whitespace-nowrap" style={{ width: widths.risk_level }}>
-                  风险等级
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'risk_level')} />
-                </th>
-                <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none" style={{ width: widths.content }}>
-                  规则内容 / 判断理由
-                  <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'content')} />
-                </th>
-                <th className="px-4 py-3 font-semibold text-slate-700 border-b" style={{ width: widths.actions }}>操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredResults.map(r => (
-                <React.Fragment key={r.id}>
-                  <tr
-                    className={`hover:bg-slate-50 transition-colors ${r.result_code === 'PASS' ? 'bg-emerald-50/30'
-                      : r.result_code === 'REJECT' ? 'bg-red-50/30'
-                        : r.result_code === 'MANUAL_CHECK' ? 'bg-orange-50/30'
-                          : ''
+        {activeTab === 'rules' ? (
+          <>
+            {/* Filter Bar */}
+            <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-4">
+              <Filter className="w-4 h-4 text-slate-400" />
+              <span className="text-sm text-slate-600">结果:</span>
+              <div className="flex gap-2">
+                {(['ALL', 'PASS', 'REJECT', 'MANUAL_CHECK'] as FilterStatus[]).map(status => (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filterStatus === status
+                      ? status === 'PASS' ? 'bg-emerald-600 text-white'
+                        : status === 'REJECT' ? 'bg-red-600 text-white'
+                          : status === 'MANUAL_CHECK' ? 'bg-orange-600 text-white'
+                            : 'bg-indigo-600 text-white'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                       }`}
                   >
-                    <td className="px-4 py-3 font-mono text-sm text-slate-700">{r.clause_number || 'N/A'}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600 max-w-[160px]">
-                      <div className="line-clamp-2" title={r.standard_name || ''}>{r.standard_name || '-'}</div>
-                    </td>
-                    <td className="px-4 py-3">{getResultBadge(r.result_code)}</td>
-                    <td className="px-4 py-3">{getRiskLevelBadge(r.risk_level)}</td>
-                    <td className="px-4 py-3">
-                      <div className="text-slate-800 font-medium mb-1 line-clamp-1">{r.rule_content || 'N/A'}</div>
-                      <div className="line-clamp-2 text-slate-500 text-xs">{r.reasoning || '无判断理由'}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
-                        >
-                          {expandedId === r.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </button>
-                        <button
-                          onClick={() => setEditingResult(r)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        {deleteConfirm === r.id ? (
-                          <div className="flex gap-1">
-                            <button onClick={() => handleDeleteResult(r.id)} className="p-1 bg-red-600 text-white rounded text-xs">确认</button>
-                            <button onClick={() => setDeleteConfirm(null)} className="p-1 bg-slate-300 text-slate-700 rounded text-xs">取消</button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setDeleteConfirm(r.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedId === r.id && (
-                    <tr className="bg-slate-50/80">
-                      <td colSpan={6} className="px-4 pb-4 pt-2">
-                        <div className="grid md:grid-cols-3 gap-4">
-                          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                            <div className="text-xs font-bold text-slate-400 uppercase mb-2">判断理由</div>
-                            <div className="text-slate-700 text-sm leading-relaxed">{r.reasoning || '无'}</div>
-                          </div>
-                          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                            <div className="text-xs font-bold text-slate-400 uppercase mb-2">引用证据</div>
-                            <div className="italic text-slate-600 text-sm bg-slate-50 p-2 rounded border border-slate-100">"{r.evidence || '无'}"</div>
-                          </div>
-                          <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                            <div className="flex justify-between items-center mb-2">
-                              <div className="text-xs font-bold text-slate-400 uppercase">修改建议</div>
-                              <button
-                                onClick={() => openAddRuleModal(r)}
-                                className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded transition-colors"
-                                title="将此建议加入规则组"
-                              >
-                                <Plus className="w-3 h-3" /> 加入规则组
-                              </button>
-                            </div>
-                            <div className="text-slate-700 text-sm leading-relaxed">{r.suggestion || '无'}</div>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-              {filteredResults.length === 0 && (
-                <tr><td colSpan={6} className="text-center p-8 text-slate-400">
-                  {results.length === 0 ? '暂无审查结果' : '没有符合筛选条件的结果'}
-                </td></tr>
+                    {status === 'ALL' ? '全部' : status === 'PASS' ? '通过' : status === 'REJECT' ? '不通过' : '待复核'}
+                    {status !== 'ALL' && ` (${stats[status]})`}
+                  </button>
+                ))}
+              </div>
+              {uniqueSources.length > 1 && (
+                <>
+                  <span className="text-slate-300">|</span>
+                  <span className="text-sm text-slate-600">规范来源:</span>
+                  <select
+                    value={filterSource}
+                    onChange={(e) => setFilterSource(e.target.value)}
+                    className="px-3 py-1 rounded-lg text-xs font-medium bg-white text-slate-600 border border-slate-200 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-300 max-w-[200px]"
+                  >
+                    <option value="ALL">全部来源 ({results.length})</option>
+                    {uniqueSources.map(source => (
+                      <option key={source} value={source}>
+                        {source.length > 25 ? source.substring(0, 25) + '...' : source} ({results.filter(r => r.standard_name === source).length})
+                      </option>
+                    ))}
+                  </select>
+                </>
               )}
-            </tbody>
-          </table>
+              {(filterStatus !== 'ALL' || filterSource !== 'ALL') && (
+                <span className="text-xs text-slate-500">
+                  显示 {filteredResults.length} / {results.length} 条
+                </span>
+              )}
+            </div>
+
+            {loading ? (
+              <div className="p-12 text-center text-slate-500 flex justify-center items-center">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" /> 加载中...
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none" style={{ width: widths.clause_number }}>
+                      条款号
+                      <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'clause_number')} />
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none" style={{ width: widths.standard_name }}>
+                      规范来源
+                      <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'standard_name')} />
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none" style={{ width: widths.result }}>
+                      结果
+                      <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'result')} />
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none whitespace-nowrap" style={{ width: widths.risk_level }}>
+                      风险等级
+                      <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'risk_level')} />
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-slate-700 border-b relative select-none" style={{ width: widths.content }}>
+                      规则内容 / 判断理由
+                      <div className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-300" onMouseDown={(e) => handleMouseDown(e, 'content')} />
+                    </th>
+                    <th className="px-4 py-3 font-semibold text-slate-700 border-b" style={{ width: widths.actions }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredResults.map(r => (
+                    <React.Fragment key={r.id}>
+                      <tr
+                        className={`hover:bg-slate-50 transition-colors ${r.result_code === 'PASS' ? 'bg-emerald-50/30'
+                          : r.result_code === 'REJECT' ? 'bg-red-50/30'
+                            : r.result_code === 'MANUAL_CHECK' ? 'bg-orange-50/30'
+                              : ''
+                          }`}
+                      >
+                        <td className="px-4 py-3 font-mono text-sm text-slate-700">{r.clause_number || 'N/A'}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600 max-w-[160px]">
+                          <div className="line-clamp-2" title={r.standard_name || ''}>{r.standard_name || '-'}</div>
+                        </td>
+                        <td className="px-4 py-3">{getResultBadge(r.result_code)}</td>
+                        <td className="px-4 py-3">{getRiskLevelBadge(r.risk_level)}</td>
+                        <td className="px-4 py-3">
+                          <div className="text-slate-800 font-medium mb-1 line-clamp-1">{r.rule_content || 'N/A'}</div>
+                          <div className="line-clamp-2 text-slate-500 text-xs">{r.reasoning || '无判断理由'}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                            >
+                              {expandedId === r.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </button>
+                            <button
+                              onClick={() => setEditingResult(r)}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            {deleteConfirm === r.id ? (
+                              <div className="flex gap-1">
+                                <button onClick={() => handleDeleteResult(r.id)} className="p-1 bg-red-600 text-white rounded text-xs">确认</button>
+                                <button onClick={() => setDeleteConfirm(null)} className="p-1 bg-slate-300 text-slate-700 rounded text-xs">取消</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteConfirm(r.id)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedId === r.id && (
+                        <tr className="bg-slate-50/80">
+                          <td colSpan={6} className="px-4 pb-4 pt-2">
+                            <div className="grid md:grid-cols-3 gap-4">
+                              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                                <div className="text-xs font-bold text-slate-400 uppercase mb-2">判断理由</div>
+                                <div className="text-slate-700 text-sm leading-relaxed">{r.reasoning || '无'}</div>
+                              </div>
+                              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                                <div className="text-xs font-bold text-slate-400 uppercase mb-2">引用证据</div>
+                                <div className="italic text-slate-600 text-sm bg-slate-50 p-2 rounded border border-slate-100">"{r.evidence || '无'}"</div>
+                              </div>
+                              <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                                <div className="flex justify-between items-center mb-2">
+                                  <div className="text-xs font-bold text-slate-400 uppercase">修改建议</div>
+                                  <button
+                                    onClick={() => openAddRuleModal(r)}
+                                    className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded transition-colors"
+                                    title="将此建议加入规则组"
+                                  >
+                                    <Plus className="w-3 h-3" /> 加入规则组
+                                  </button>
+                                </div>
+                                <div className="text-slate-700 text-sm leading-relaxed">{r.suggestion || '无'}</div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                  {filteredResults.length === 0 && (
+                    <tr><td colSpan={6} className="text-center p-8 text-slate-400">
+                      {results.length === 0 ? '暂无审查结果' : '没有符合筛选条件的结果'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </>
+        ) : (
+          <div className="p-6">
+            {comparisonResults.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <p>暂无对比文件分析结果</p>
+                <p className="text-sm mt-1">本次审查未选择对比文件，或未发现冲突内容。</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {comparisonResults.map(res => (
+                  <div key={res.id} className="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h4 className="font-semibold text-slate-800">对比文件冲突</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">ID: {res.comparison_document_id.substring(0, 8)}...</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 bg-red-50 text-red-700 text-xs font-bold rounded border border-red-100">
+                          冲突度: {(res.conflict_score * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                        <div className="text-xs font-bold text-slate-500 uppercase mb-1">冲突摘要</div>
+                        <p className="text-sm text-slate-700">{res.summary || '无摘要'}</p>
+                      </div>
+                      <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                        <div className="text-xs font-bold text-slate-500 uppercase mb-1">详细说明</div>
+                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{res.details ? JSON.stringify(JSON.parse(res.details), null, 2) : '无详情'}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

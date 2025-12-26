@@ -85,14 +85,31 @@ The purpose of this module is to perform "reverse engineering" on engineering re
 
 
 
-After testing, Module 1, rule set management have following update needs:
-1. change rule group management to a hierarchy structure, rule group can have sub rule groups, and sub rule groups can have sub rule groups, when create new rule group, parent rule group should be selected, if no rule group selected, new rule group will be created as a top level rule group. 
+
+
+
+
+
+
+After testing, Module 1, rule group management have following update needs:
+1. change rule group management to a hierarchy structure, rule group can have sub rule groups, and sub rule groups can have sub rule groups, when create new rule group, parent rule group should be selected, if no rule group selected, new rule group will be created as a top level rule group. When deleting a rule group, all the sub rule groups and rules under it should be deleted.
 This change will have a impact on module 3 and module 4, for module 3, when starting reviewing process, multiple rule groups could be selected(or single group like now), for module 4, when starting reviewing process, all the results from selected rule groups will be listed in the review result list.
 
 
 
 After testing, Module 2, files upload have following update needs:
-1. add a button and a page to see the details of chunks for the file after vectorizing, use could see, the file is aplited to how many chunks, and each chunk is how many sentences, and how many words, click each chunk, could see what the original content is.
+1. add a button and a page to see the details of chunks for the file after vectorizing, user could see, the file is split to how many chunks, and each chunk is how many sentences, and how many words, click each chunk, could see what the original content is.
 
-after testing module 3, reviewing center have following update needs:
-1. 
+
+
+after testing, a new module 6 is needed.
+In current process, all files that are uploaded to module 2(documents store) will be viewed carefully by rule and rule and every rule will have a conclusion whether it is pass, fail or need human check. There is a new situation that, not every file could be split to rules, one by one, some standard files are like a general guide lines or other documents that have the simiar content like the document that to be reviewed, we should check whether the content in the review file is following the guide lines(whether this project is comply with the city planning, hydro planning), whether the new document is confilicting with other similar documents of the same kind(like working area conflicts in two engineering plans),for this senario, the reviewing process is not to a specific rule but to a entire document and get a comprehensive conclusion for the aspects that may be affected by the new document.
+
+I wanna add a new module 6, called "comparison document"(对比文件), to address this needs, 
+first, user could upload different documents in module 6, with CRUD functions to the document, they are displayed like a document list. 
+in module3 reviewing center, besides selecting rule groups, people can also select comparison documents, which means select document to be reviewd in panel 1, select rule groups in panel 2, select comparison documents in panel 3(can select multiple files and is a option), people can select rule groups, comparison documents, both or any of them is OK then the review peocess will begin.
+in module 5, based on current functions, a new component for display the result of comparison documents will be added, each comparison document will have a seperate result diplay components like a rule, and the result could be also download as csv file
+
+module 6 should put right after module 1 for smoothing the reviewing process.
+
+what's your opinion about this? any improvement suggestions?

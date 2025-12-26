@@ -1,4 +1,4 @@
-import { RuleGroup, Rule, Document, DocumentChunk, ReviewTask, ReviewResult } from '../types';
+import { RuleGroup, Rule, Document, DocumentChunk, ReviewTask, ReviewResult, ComparisonDocument, ComparisonResult } from '../types';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -45,8 +45,10 @@ export const api = {
   },
 
   // ============== Rules ==============
-  getRules: async (groupId: string): Promise<Rule[]> => {
-    const res = await fetch(`${API_BASE}/rule-groups/${groupId}/rules`);
+  getRules: async (groupId: string, recursive: boolean = false): Promise<Rule[]> => {
+    const url = new URL(`${API_BASE}/rule-groups/${groupId}/rules`);
+    if (recursive) url.searchParams.append('recursive', 'true');
+    const res = await fetch(url.toString());
     if (!res.ok) throw new Error('Failed to fetch rules');
     return res.json();
   },
@@ -168,11 +170,15 @@ export const api = {
   },
 
   // ============== Reviews ==============
-  startReview: async (documentId: string, ruleGroupIds: string[]): Promise<any> => {
+  startReview: async (documentId: string, ruleGroupIds: string[], comparisonDocIds?: string[]): Promise<any> => {
     const res = await fetch(`${API_BASE}/reviews/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ document_id: documentId, rule_group_ids: ruleGroupIds })
+      body: JSON.stringify({
+        document_id: documentId,
+        rule_group_ids: ruleGroupIds,
+        comparison_document_ids: comparisonDocIds
+      })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -323,13 +329,50 @@ export const api = {
     return URL.createObjectURL(blob);
   },
 
-  convertOpinionToRule: async (opinionId: string, ruleGroupId: string): Promise<any> => {
+  convertOpinionToRule: async (opinionId: string, ruleGroupIds: string[]): Promise<any> => {
     const res = await fetch(`${API_BASE}/history-analysis/opinions/${opinionId}/convert`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rule_group_id: ruleGroupId })
+      body: JSON.stringify({ rule_group_ids: ruleGroupIds })
     });
     if (!res.ok) throw new Error('Failed to convert opinion to rule');
+    return res.json();
+  },
+
+  // ============== Comparison Documents (Module 6) ==============
+  getComparisonDocuments: async (): Promise<ComparisonDocument[]> => {
+    const res = await fetch(`${API_BASE}/comparison-documents`);
+    if (!res.ok) throw new Error('Failed to fetch comparison documents');
+    return res.json();
+  },
+
+  uploadComparisonDocument: async (file: File, description?: string): Promise<ComparisonDocument> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (description) formData.append('description', description);
+
+    const res = await fetch(`${API_BASE}/comparison-documents`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to upload comparison document');
+    }
+    return res.json();
+  },
+
+  deleteComparisonDocument: async (docId: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to delete comparison document');
+    }
+  },
+
+  getComparisonResults: async (taskId: string): Promise<ComparisonResult[]> => {
+    const res = await fetch(`${API_BASE}/reviews/${taskId}/comparison-results`);
+    if (!res.ok) throw new Error('Failed to fetch comparison results');
     return res.json();
   }
 };

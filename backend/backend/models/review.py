@@ -26,6 +26,7 @@ class ReviewTask(SQLModel, table=True):
     document_id: str = Field(foreign_key="documents.id", index=True)
     rule_group_id: Optional[str] = Field(default=None, foreign_key="rule_groups.id", index=True)
     rule_group_names: Optional[str] = None # Comma separated names of selected groups
+    comparison_document_ids: Optional[str] = None # Comma separated IDs of comparison documents
     status: str = TaskStatus.PENDING.value
     progress: int = 0  # 0-100
     start_time: Optional[datetime] = None

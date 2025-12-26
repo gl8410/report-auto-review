@@ -15,7 +15,7 @@ async def call_llm(
     max_tokens: int = 4096
 ) -> Optional[str]:
     """
-    Call DeepSeek V3.1 LLM API
+    Call DeepSeek LLM API
     """
     if not settings.API_KEY:
         raise ValueError("API_KEY not found in environment variables")
@@ -253,10 +253,16 @@ async def compare_rule_with_context(
     "suggestion": "如果不符合要求，给出具体的修改建议；如符合则填写'无'"
 }}
 
-注意：
-- PASS: 文档内容完全符合规则要求
-- REJECT: 文档内容明确不符合规则要求
-- MANUAL_CHECK: 无法确定是否符合，需要人工复核（如找不到相关内容、信息不足等）
+判定标准：
+1. PASS (通过):
+   - 文档内容完全符合规则要求。
+   - 或者，**文档内容与该规则无关**，或者**该规则不适用于本文档**。在这种情况下，reasoning 必须填写 "文档内容中无相关审查内容"。
+2. REJECT (不通过):
+   - 文档内容明确违反了规则要求。
+   - 规则要求必须包含某些内容，但文档中明确缺失。
+3. MANUAL_CHECK (人工复核):
+   - 仅在发现疑似问题但无法确定的极少数情况下使用。
+   - 如果只是因为检索到的内容不相关，请优先判定为 PASS。
 """
 
     headers = {
@@ -327,7 +333,7 @@ async def compare_documents_and_extract_opinions(
         
     prompt = f"""你是一位资深的工程报告审查专家。你的任务是对比"原始稿件"和"修改后稿件"，推断出导致这些修改的"专家审查意见"。
 
-请分析两个版本之间的差异，并推断出导致这些修改的具体专家意见。
+请分析两个版本之间的差异，并推断出导致 these 修改的具体专家意见。
 
 **原始稿件（修改前）:**
 {draft_full_text[:100000]} 
@@ -377,3 +383,106 @@ async def compare_documents_and_extract_opinions(
     except Exception as e:
         print(f"Error in comparison: {e}")
         return []
+
+async def compare_documents_chunk_wise(
+    target_chunk: str,
+    reference_chunks: List[Dict],
+    target_filename: str,
+    reference_filename: str
+) -> Dict[str, Any]:
+    """
+    Compare a chunk from the target document against reference chunks to identify conflicts or compliance.
+    """
+    if not settings.API_KEY:
+        raise ValueError("API_KEY not found")
+
+    reference_text = "\n\n---\n\n".join([
+        f"[参考片段 {i+1}]\n{chunk['text']}"
+        for i, chunk in enumerate(reference_chunks)
+    ])
+
+    if not reference_text.strip():
+        return {
+            "result_code": "IRRELEVANT",
+            "reasoning": "未找到相关的参考内容",
+            "evidence": "",
+            "suggestion": ""
+        }
+
+    prompt = f"""你是一名专业的工程报告审查专家。请对比以下两份文档的内容片段，判断是否存在冲突或一致性问题。
+
+## 目标文档（待审查）
+文件名：{target_filename}
+内容片段：
+{target_chunk}
+
+## 参考文档（对比依据）
+文件名：{reference_filename}
+相关参考片段：
+{reference_text}
+
+## 分析要求
+请分析"目标文档"的内容是否与"参考文档"的内容存在冲突、不一致，或者是否符合参考文档的要求。
+
+请严格按照以下JSON格式输出（不要添加任何其他内容）：
+{{
+    "result_code": "CONFLICT/COMPLIANT/IRRELEVANT",
+    "reasoning": "详细的分析理由。如果存在冲突，请明确指出矛盾点；如果符合，请说明依据。",
+    "evidence": "引用参考文档中的具体原文作为证据",
+    "suggestion": "如果存在冲突，给出修改建议；否则填'无'"
+}}
+
+注意：
+- CONFLICT: 目标文档内容与参考文档明确冲突或不符合要求
+- COMPLIANT: 目标文档内容明确符合参考文档的要求
+- IRRELEVANT: 两者内容无直接关联，或参考片段无法用于验证目标片段
+"""
+
+    headers = {
+        "Authorization": f"Bearer {settings.API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": settings.LLM_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 1000
+    }
+
+    timeout_config = httpx.Timeout(120.0, connect=30.0)
+
+    async with httpx.AsyncClient(timeout=timeout_config) as client:
+        try:
+            response = await client.post(settings.LLM_URL, json=payload, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+            content = result["choices"][0]["message"]["content"]
+
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                valid_codes = ["CONFLICT", "COMPLIANT", "IRRELEVANT"]
+                if parsed.get("result_code") not in valid_codes:
+                    parsed["result_code"] = "IRRELEVANT"
+                return {
+                    "result_code": parsed.get("result_code", "IRRELEVANT"),
+                    "reasoning": parsed.get("reasoning", "无法解析分析结果"),
+                    "evidence": parsed.get("evidence", ""),
+                    "suggestion": parsed.get("suggestion", "")
+                }
+            else:
+                return {
+                    "result_code": "IRRELEVANT",
+                    "reasoning": "LLM响应格式异常",
+                    "evidence": "",
+                    "suggestion": ""
+                }
+        except Exception as e:
+            print(f"Document comparison error: {e}")
+            return {
+                "result_code": "IRRELEVANT",
+                "reasoning": f"分析过程出错: {str(e)}",
+                "evidence": "",
+                "suggestion": ""
+            }
