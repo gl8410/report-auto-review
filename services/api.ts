@@ -1,6 +1,7 @@
 import { RuleGroup, Rule, Document, DocumentChunk, ReviewTask, ReviewResult, ComparisonDocument, ComparisonResult } from '../types';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+// const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://10.254.68.193:8000/api/v1';
 
 export const api = {
   // ============== Rule Groups ==============
@@ -141,12 +142,67 @@ export const api = {
     return res.json();
   },
 
-  uploadDocument: async (file: File): Promise<Document> => {
+  uploadDocument: async (
+    file: File,
+    signal?: AbortSignal,
+    onProgress?: (progress: number) => void
+  ): Promise<Document> => {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch(`${API_BASE}/documents`, {
-      method: 'POST',
-      body: formData
+
+    // Use XMLHttpRequest for progress tracking
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      // Handle abort signal
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          xhr.abort();
+          reject(new DOMException('Upload aborted', 'AbortError'));
+        });
+      }
+
+      // Track upload progress
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100);
+            onProgress(progress);
+          }
+        });
+      }
+
+      // Handle completion
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data);
+          } catch (e) {
+            reject(new Error('Failed to parse response'));
+          }
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err.detail || 'Upload failed'));
+          } catch (e) {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      });
+
+      // Handle errors
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error during upload'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new DOMException('Upload aborted', 'AbortError'));
+      });
+
+      // Send request
+      xhr.open('POST', `${API_BASE}/documents`);
+      xhr.send(formData);
     });
     if (!res.ok) {
       const err = await res.json();
@@ -161,6 +217,43 @@ export const api = {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to delete document');
     }
+  },
+
+  retryDocument: async (docId: string): Promise<Document> => {
+    const res = await fetch(`${API_BASE}/documents/${docId}/retry`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to retry document');
+    }
+    return res.json();
+  },
+
+  downloadDocumentMarkdown: async (docId: string, filename: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/documents/${docId}/download-markdown`);
+    if (!res.ok) throw new Error('Failed to download markdown');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename.replace(/\.[^/.]+$/, '')}.md`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
+
+  downloadDocumentOriginal: async (docId: string, filename: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/documents/${docId}/download-original`);
+    if (!res.ok) throw new Error('Failed to download original file');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   },
 
   getDocumentChunks: async (docId: string): Promise<DocumentChunk[]> => {
@@ -346,20 +439,74 @@ export const api = {
     return res.json();
   },
 
-  uploadComparisonDocument: async (file: File, description?: string): Promise<ComparisonDocument> => {
+  getComparisonDocument: async (docId: string): Promise<ComparisonDocument> => {
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}`);
+    if (!res.ok) throw new Error('Failed to fetch comparison document');
+    return res.json();
+  },
+
+  uploadComparisonDocument: async (
+    file: File,
+    signal?: AbortSignal,
+    onProgress?: (progress: number) => void
+  ): Promise<ComparisonDocument> => {
     const formData = new FormData();
     formData.append('file', file);
-    if (description) formData.append('description', description);
 
-    const res = await fetch(`${API_BASE}/comparison-documents`, {
-      method: 'POST',
-      body: formData
+    // Use XMLHttpRequest for progress tracking
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      // Handle abort signal
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          xhr.abort();
+          reject(new DOMException('Upload aborted', 'AbortError'));
+        });
+      }
+
+      // Track upload progress
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100);
+            onProgress(progress);
+          }
+        });
+      }
+
+      // Handle completion
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data);
+          } catch (e) {
+            reject(new Error('Failed to parse response'));
+          }
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err.detail || 'Upload failed'));
+          } catch (e) {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      });
+
+      // Handle errors
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error during upload'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new DOMException('Upload aborted', 'AbortError'));
+      });
+
+      // Send request
+      xhr.open('POST', `${API_BASE}/comparison-documents`);
+      xhr.send(formData);
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Failed to upload comparison document');
-    }
-    return res.json();
   },
 
   deleteComparisonDocument: async (docId: string): Promise<void> => {
@@ -368,6 +515,43 @@ export const api = {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to delete comparison document');
     }
+  },
+
+  retryComparisonDocument: async (docId: string): Promise<ComparisonDocument> => {
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/retry`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to retry comparison document');
+    }
+    return res.json();
+  },
+
+  downloadComparisonMarkdown: async (docId: string, filename: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/download-markdown`);
+    if (!res.ok) throw new Error('Failed to download markdown');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename.replace(/\.[^/.]+$/, '')}.md`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
+
+  downloadComparisonOriginal: async (docId: string, filename: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/download-original`);
+    if (!res.ok) throw new Error('Failed to download original file');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   },
 
   getComparisonResults: async (taskId: string): Promise<ComparisonResult[]> => {

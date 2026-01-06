@@ -391,12 +391,12 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
             onChange={(e) => setSelectedDocId(e.target.value)}
           >
             <option value="">-- 选择文档 --</option>
-            {docs.filter(d => d.status === 'INDEXED').map(doc => (
+            {docs.filter(d => d.status === 'DONE').map(doc => (
               <option key={doc.id} value={doc.id}>{doc.filename} ({new Date(doc.upload_time).toLocaleDateString()})</option>
             ))}
           </select>
-          {docs.length > 0 && docs.filter(d => d.status === 'INDEXED').length === 0 && (
-            <p className="text-xs text-amber-600 mt-2 flex items-center"><AlertCircle className="w-3 h-3 mr-1" /> 暂无已索引的文档，请先上传文档并等待处理完成</p>
+          {docs.length > 0 && docs.filter(d => d.status === 'DONE').length === 0 && (
+            <p className="text-xs text-amber-600 mt-2 flex items-center"><AlertCircle className="w-3 h-3 mr-1" /> 暂无已处理完成的文档，请先上传文档并等待处理完成</p>
           )}
         </div>
 
@@ -445,7 +445,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
 
           <div className="border border-slate-300 rounded-lg bg-white overflow-hidden">
             <div className="max-h-60 overflow-y-auto p-2 space-y-1">
-              {compDocs.filter(d => d.status === 'INDEXED').map(doc => (
+              {compDocs.filter(d => d.status === 'DONE').map(doc => (
                 <div
                   key={doc.id}
                   className={`flex items-center p-2 rounded cursor-pointer hover:bg-slate-50 ${selectedCompDocIds.includes(doc.id) ? 'bg-indigo-50' : ''}`}
@@ -459,7 +459,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
                   </span>
                 </div>
               ))}
-              {compDocs.filter(d => d.status === 'INDEXED').length === 0 && (
+              {compDocs.filter(d => d.status === 'DONE').length === 0 && (
                 <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center">
                   暂无可用对比文件
                 </div>

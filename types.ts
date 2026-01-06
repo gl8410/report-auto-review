@@ -36,7 +36,11 @@ export interface Document {
   id: string;
   filename: string;
   storage_path?: string;
-  status: 'UPLOADED' | 'PARSING' | 'INDEXED' | 'FAILED';
+  markdown_path?: string;
+  mineru_batch_id?: string;
+  mineru_zip_url?: string;
+  status: 'UPLOADING' | 'PARSING' | 'EMBEDDING' | 'DONE' | 'FAILED';
+  error_message?: string;
   meta_info?: string;
   upload_time: string;
 }
@@ -146,7 +150,11 @@ export interface ComparisonDocument {
   id: string;
   filename: string;
   storage_path?: string;
-  status: 'UPLOADED' | 'PARSING' | 'INDEXED' | 'FAILED';
+  markdown_path?: string;
+  mineru_batch_id?: string;
+  mineru_zip_url?: string;
+  status: 'UPLOADING' | 'PARSING' | 'EMBEDDING' | 'DONE' | 'FAILED';
+  error_message?: string;
   description?: string;
   upload_time: string;
 }

@@ -298,12 +298,12 @@ class ReviewService:
         background_tasks: BackgroundTasks
     ) -> Dict:
         """Start a new review task."""
-        # Validate document exists and is indexed
+        # Validate document exists and is processed
         doc = session.get(Document, data.document_id)
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
-        if doc.status != DocumentStatus.INDEXED.value:
-            raise HTTPException(status_code=400, detail=f"Document is not indexed yet. Current status: {doc.status}")
+        if doc.status != DocumentStatus.DONE.value:
+            raise HTTPException(status_code=400, detail=f"Document is not processed yet. Current status: {doc.status}")
 
         # Validate inputs
         if not data.rule_group_ids and not data.comparison_document_ids:

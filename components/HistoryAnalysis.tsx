@@ -489,7 +489,7 @@ export const HistoryAnalysis: React.FC = () => {
                                         fileType="approved"
                                         fileIndex={0}
                                         filename={approvedFilenames[0] || 'unknown.pdf'}
-                                        location={selectedOpinion.approved_file_location ? JSON.parse(selectedOpinion.approved_file_location) : null}
+                                        locationJson={selectedOpinion.approved_file_location}
                                         title="修改后稿件（修改后）"
                                         highlightText={approvedHighlight}
                                     />

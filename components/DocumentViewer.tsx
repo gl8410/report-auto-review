@@ -14,7 +14,7 @@ interface DocumentViewerProps {
     fileType: 'draft' | 'approved';
     fileIndex: number;
     filename?: string;
-    location?: FileLocation | null;
+    locationJson?: string | null;
     title: string;
     highlightText?: string;
 }
@@ -24,10 +24,14 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
     fileType,
     fileIndex,
     filename,
-    location,
+    locationJson,
     title,
     highlightText
 }) => {
+    // Memoize parsed location to stabilize effects
+    const location = React.useMemo(() => {
+        return locationJson ? JSON.parse(locationJson) as FileLocation : null;
+    }, [locationJson]);
     const [fileUrl, setFileUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -36,6 +40,16 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
     const [scale, setScale] = useState(1.0);
     const [pdfDocument, setPdfDocument] = useState<any>(null);
     const [searchStatus, setSearchStatus] = useState<'idle' | 'searching' | 'found' | 'not-found'>('idle');
+    const [displayPageNumber, setDisplayPageNumber] = useState<number | null>(1);
+
+    // Debounce page switching to prevent TextLayer cancellation errors
+    useEffect(() => {
+        setDisplayPageNumber(null); // Unmount current page immediately
+        const timer = setTimeout(() => {
+            setDisplayPageNumber(pageNumber); // Mount new page after delay
+        }, 50);
+        return () => clearTimeout(timer);
+    }, [pageNumber]);
 
     // Fetch file URL
     useEffect(() => {
@@ -198,20 +212,26 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                     error={<div className="text-red-500 text-sm">无法加载PDF文档</div>}
                                     className="shadow-lg inline-block"
                                 >
-                                    <Page
-                                        pageNumber={pageNumber}
-                                        scale={scale}
-                                        renderTextLayer={true}
-                                        renderAnnotationLayer={true}
-                                        className="bg-white"
-                                        customTextRenderer={({ str, itemIndex }) => {
-                                            // Simple highlighting logic
-                                            if (highlightText && str.includes(highlightText.substring(0, 10))) {
-                                                return `<span class="bg-yellow-200">${str}</span>`;
-                                            }
-                                            return str;
-                                        }}
-                                    />
+                                    {displayPageNumber && (
+                                        <div key={`page_${displayPageNumber}_${scale}`}>
+                                            <Page
+                                                pageNumber={displayPageNumber}
+                                                scale={scale}
+                                                renderTextLayer={true}
+                                                renderAnnotationLayer={true}
+                                                className="bg-white"
+                                                onRenderError={() => console.warn("Page render error ignored")}
+                                                onGetTextError={() => console.warn("Text layer error ignored")}
+                                                customTextRenderer={({ str, itemIndex }) => {
+                                                    // Simple highlighting logic
+                                                    if (highlightText && str.includes(highlightText.substring(0, 10))) {
+                                                        return `<span class="bg-yellow-200">${str}</span>`;
+                                                    }
+                                                    return str;
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                 </Document>
                             </div>
                         ) : (

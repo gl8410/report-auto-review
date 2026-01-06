@@ -12,9 +12,9 @@ const steps = [
   { id: AppStep.Rules, label: '规则管理', icon: ShieldCheck },
   { id: AppStep.Comparison, label: '对比文件', icon: FileText },
   { id: AppStep.Upload, label: '文档仓库', icon: FileText },
-  { id: AppStep.Review, label: '审查中心', icon: Play },
+  { id: AppStep.Review, label: '启动审查', icon: Play },
   { id: AppStep.Report, label: '审查结果', icon: BarChart3 },
-  { id: AppStep.HistoryAnalysis, label: '历史分析', icon: History },
+  { id: AppStep.HistoryAnalysis, label: '对比分析', icon: History },
 ];
 
 export const Layout: React.FC<LayoutProps> = ({ currentStep, onNavigate, children }) => {
@@ -61,7 +61,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentStep, onNavigate, childre
       </main>
       <footer className="bg-white border-t border-slate-200 py-6">
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-slate-400">
-          基于 DeepSeek AI 大模型 • 智能文档审查系统原型
+          基于 DeepSeek AI 大模型 • 智能文档审查系统
         </div>
       </footer>
     </div>

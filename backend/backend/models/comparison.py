@@ -6,9 +6,10 @@ from enum import Enum
 
 class ComparisonDocumentStatus(str, Enum):
     """对比文件状态枚举"""
-    UPLOADED = "UPLOADED"
+    UPLOADING = "UPLOADING"
     PARSING = "PARSING"
-    INDEXED = "INDEXED"
+    EMBEDDING = "EMBEDDING"
+    DONE = "DONE"
     FAILED = "FAILED"
 
 class ComparisonDocument(SQLModel, table=True):
@@ -18,7 +19,11 @@ class ComparisonDocument(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     filename: str
     storage_path: Optional[str] = None
-    status: str = ComparisonDocumentStatus.UPLOADED.value
+    markdown_path: Optional[str] = None  # Path to extracted .md file
+    mineru_batch_id: Optional[str] = None  # MinerU batch ID for tracking
+    mineru_zip_url: Optional[str] = None  # MinerU result ZIP URL
+    status: str = ComparisonDocumentStatus.UPLOADING.value
+    error_message: Optional[str] = None  # Error message if parsing failed
     description: Optional[str] = None
     upload_time: datetime = Field(default_factory=datetime.utcnow)
 

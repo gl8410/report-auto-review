@@ -85,31 +85,149 @@ The purpose of this module is to perform "reverse engineering" on engineering re
 
 
 
-
-
-
-
-
-
-After testing, Module 1, rule group management have following update needs:
-1. change rule group management to a hierarchy structure, rule group can have sub rule groups, and sub rule groups can have sub rule groups, when create new rule group, parent rule group should be selected, if no rule group selected, new rule group will be created as a top level rule group. When deleting a rule group, all the sub rule groups and rules under it should be deleted.
+After testing, Module 1, rule set management have following update needs:
+1. change rule group management to a hierarchy structure, rule group can have sub rule groups, and sub rule groups can have sub rule groups, when create new rule group, parent rule group should be selected, if no rule group selected, new rule group will be created as a top level rule group. 
 This change will have a impact on module 3 and module 4, for module 3, when starting reviewing process, multiple rule groups could be selected(or single group like now), for module 4, when starting reviewing process, all the results from selected rule groups will be listed in the review result list.
 
 
 
 After testing, Module 2, files upload have following update needs:
-1. add a button and a page to see the details of chunks for the file after vectorizing, user could see, the file is split to how many chunks, and each chunk is how many sentences, and how many words, click each chunk, could see what the original content is.
+1. add a button and a page to see the details of chunks for the file after vectorizing, use could see, the file is aplited to how many chunks, and each chunk is how many sentences, and how many words, click each chunk, could see what the original content is.
+
+after testing module 3, reviewing center have following update needs:
+1. now only one rule group can be selected for reviewing, make it multiple select, so user can select multiple rule groups to review.
+
+
+for module 5, historical files analysis, after uploading original file and modified file, review comments will extract automatically like there's a specialist is reviewing after analyzing the differences betwenn two files. Since now the logic of reviewing center(module 3) is changed, from choose single rule group to choose multiple rule groups, the logic of module 5 should also be changed, after analysis is done, user can select multiple rule groups to save the review comments to. Don't need to select target rulegroup at the beginning of the process. 
+
+
+for module 5, historical files analysis, modify following changes:
+1. for each opinion extracted from the file, add to rule group should have the same hierachy rule group as in module 1, not just the rop rule groups
+2. the right panel, should be the modified file ( to display where have been modified)
+3. after clicking different opinions, only the first and the second opinion can locate to different places in the right panel, the rest can not, need to fix this issue.
+
+
+after testing, still have some issues to fix:
+1. when amplify the right panel(with the plus emplifier on the top of pdf display component) bottom content of the page will missing since the container is limited, add a vertical scroll bar to adjust to see the whole page.
+2. this time only the first 3 opinions can position location, the rest don't have location, need to fix this issue, of they have no location, just show a message "无定位信息", make a better location search method to improve user experience.
+
+
+after testing, I found there might be a problem, after review, a big proportion(40%-50%) of rule result may need human verification, this will raise the working load to the user who uses this system, in the results that need human verification, i picked 10 cases to see what the reasons are, and found below reasons:
+1. the rule is not clear enough, may be irelavant to the content in the report, or the rule is too general, can not be applied to the specific content in the report.
+2. the rule is clear enough, but the llm can not decide content in the report whether should be checked( whether the report is missing the required coentent, or just have no such need)
+
+based on these situation, optimize the reviewing prompts, if the content in the report is not related to the rule, just say, "文档内容中无相关审查内容" and pass the review, do not need human to verify
+
+
+after testing ,i found a serious issue in this app, if user upload a pdf that filled with pictures, current pypdf library can not extract text from the pictures, the upload file will not be indexed, only a few contents can be extracted and indexed, so the reviewing process will not work, what's your opinion to solve this problem?
+
+
+since the effect of current pypdf and python-docx libraries are not good for files that filled with pictures, we need to use Mineru online to update the file phasing process, following the api instructions in " root\knowledgedata\MinerUapi.md ", for module 2(documentUploader), module 6(comparisonManager), make following changes:
+1. when user upload a file, use Mineru api to extract text from the file, and save the extracted text to a new file with .md extension, and use this new file for further processing.
+2.add a new botton for download the .md file, next to the upload time in the document list, so user can download the file.
+3. modify delete function to delete the .md file.
+4. Mineru API key is stored in root\.env file named as "Mineru_KEY"
+5. delete current pypdf and python-docx related code for extracting text from files.
+6. make the processed .md files for further embedding and reviewing.
+
+
+1. File Upload Flow: When a user uploads a file (PDF, DOC, DOCX, PPT, PPTX), should I:
+
+Upload the original file to storage (as currently done)
+yes
+Send it to MinerU API for parsing
+yes
+Wait for MinerU to complete parsing
+yes
+Download the .md file from MinerU's result
+yes
+Store both the original file AND the .md file?
+yes, and offer two download bottons for download original file and .md file in the document list components.
+
+2. MinerU API Method: Looking at the MinerUapi.md file, there are two approaches:
+Single File Parsing: Requires the file to be accessible via URL (doesn't support direct upload)
+Batch File Upload: Supports direct file upload
+Which approach should I use? Or should I:
+use batch file and user can upload multiple files with a warning that, should less than 200mb as mandatory check, if exceed, show a warning and ask user to split the file.
+
+
+3. Upload the file to your current storage first to get a URL
+Then use the Single File Parsing API with that URL?
+no, use batch
+Async Processing: MinerU parsing is asynchronous (creates a task, then you poll for results). Should I:
+Make the upload process wait until MinerU completes (could take time)?
+yes, and give user a hint that it will take minutes to complete pharsing.
+
+
+4. Or make it async - upload succeeds immediately, but the .md file becomes available later?
+yes
+Should I add a status indicator showing "Processing..." until the .md is ready?
+yes, there could be status of uploading, pharsing, embedding, done failed.
+Download Button: You mentioned adding a download button "next to the upload time in the document list" - should this button:
+Only appear after the .md file is ready?
+always show but only done can be available
+Download the .md file directly?
+yes
+Be disabled/hidden if MinerU processing failed?
+always show but only done can be available
+Error Handling: If MinerU parsing fails, should I:
+Still keep the original file?
+yes, but give a warning that the file is not processed and a status of failed
+Show an error message to the user?
+yes, show failed to user
+Allow retry?
+yes, add a retry button and a retry function to resend the file to MinerU API.
+
+
+for better experience, after uploading a file, we should create a row in the document list immediately, with a status of uploading, and a button to cancel the upload, after the upload is done, the status should change to pharsing, after pharsing is done, the status should change to embedding, after embedding is done, the status should change to done, if any step failed, the status should change to failed, and a retry button should be shown.
+
+there is a serious problem during test, when uploading a big file in module 2, the process will be very slow, and there's no response from the page, I guess maybe in module 6(comparisonManager ) is the same situation, check and need to optimize this process.
+
+seems this problem has not been solved completely, when uploading a big file, it goes fine, the frontend is working smoothly, but during the uploading process, I upload another file, the frontend become not responsive, everything disappear and after a while, the two files will show up and working fine, can we make a queue to indicate to the user and don't make the frontend "fake dead"?
+
+
+oh man, in module 3(documentViewer), there's no files and comparison file to select from, even I'm sure there are rules and comparison files in the database, I guess the frontend is not connected to the backend correctly, check and fix this issue.
 
 
 
-after testing, a new module 6 is needed.
-In current process, all files that are uploaded to module 2(documents store) will be viewed carefully by rule and rule and every rule will have a conclusion whether it is pass, fail or need human check. There is a new situation that, not every file could be split to rules, one by one, some standard files are like a general guide lines or other documents that have the simiar content like the document that to be reviewed, we should check whether the content in the review file is following the guide lines(whether this project is comply with the city planning, hydro planning), whether the new document is confilicting with other similar documents of the same kind(like working area conflicts in two engineering plans),for this senario, the reviewing process is not to a specific rule but to a entire document and get a comprehensive conclusion for the aspects that may be affected by the new document.
 
-I wanna add a new module 6, called "comparison document"(对比文件), to address this needs, 
-first, user could upload different documents in module 6, with CRUD functions to the document, they are displayed like a document list. 
-in module3 reviewing center, besides selecting rule groups, people can also select comparison documents, which means select document to be reviewd in panel 1, select rule groups in panel 2, select comparison documents in panel 3(can select multiple files and is a option), people can select rule groups, comparison documents, both or any of them is OK then the review peocess will begin.
-in module 5, based on current functions, a new component for display the result of comparison documents will be added, each comparison document will have a seperate result diplay components like a rule, and the result could be also download as csv file
 
-module 6 should put right after module 1 for smoothing the reviewing process.
 
-what's your opinion about this? any improvement suggestions?
+
+
+
+in the tesing process of module 3(documentViewer) combine with module 4(reportviewer), found following issures that need to be updated:
+
+1. general updates:
+
+1.1 the reviewing takes too long, for a 97 pages pdf file with 75 rules and 3 comparison documents , it takes more than 90 minutes to complete, need to optimize the speed, please check current process, analyze and give optimize suggestions.
+
+1.2 current reviewing process is "single thread" which means, only one reviewing task can be processed at a time, if there are multiple reviewing tasks, they need to wait in a queue, need to be "multi-thread" to process multiple tasks at the same time, every reviewing task is independent to each other as a task list, every task will update its notification independently, should update both backend and frontend to support this.
+
+
+2. before reviewing:
+
+2.1 when the comparison files are selected, but they are not shown in the head of the reviewing task list, user don't know which comparison files are selected, add a tag or something to show the selected comparison files.
+
+
+3. in the reviewing process:
+
+3.1 the notification during the process is not friendly, user would like to know, which rule or which comparison file is been processed and what conclusion we get for it, not just how many number has been processed. Update a 3 lines notification to show the progress, line 1: which rule or comparison file is been processed, line 2: what are we doing now (generation questions? query contents from file, communicating with llm, get conclusions, updating conclusion to result list... of course, we should use Chinese words), line 3: overall progress.(by percent of the whole task), current information is also needed, the number of passed, rejected and need manual check.
+
+3.2 now the reviewing for comparison documents is like the reviewing for rules, chunk by chunk, is there anyway we can improve this process? maybe we can display the conflicts one by one by a list, in the list, similar to rule list, for each conflict, show the target_content, reasoning, evidence and suggestion.
+
+
+4. after reviewing
+
+4.1 in the detail list of review result of module 4,(reportViewer), rules result tab, for each suggestion in the rule result, in the pop up of add to rule group button("加入规则组"), user should select the rule group which this suggesion should add to
+
+4.2 in the detail list of review result of module 4,(reportViewer), comparison result tab, the content of comparison files could be updated, similar to the rule list, for each conflict, show the target_content, reasoning, evidence and suggestion, suggestion could be updated by user, user could add suggestion to rule group with a pop up window similar to the one in rule list.
+
+
+
+could be a lot of work, we make a plan before impletation
+
+
+
+
+Further more, now the strcture of this whole app is for single user, I wanna expand its use to multiple users, with "Supabase" as the user management database, each user will have "credits" to run the reviewing tasks, like, can have 10 credits, can run 10 reviewing tasks, after one task is done, 1 credit will be consumed, if no credit left, can not run any more tasks, how should we do that?
