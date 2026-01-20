@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import json
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from fastapi import HTTPException, BackgroundTasks
 from sqlmodel import Session, select
 from backend.core.db import engine
@@ -85,7 +85,7 @@ def get_all_rules_from_groups(session: Session, group_ids: List[str]) -> List[Ru
         
     return rules
 
-async def execute_review_background(task_id: str, document_id: str, rule_ids: List[str], comparison_doc_ids: List[str] = None):
+async def execute_review_background(task_id: str, document_id: str, rule_ids: List[str], owner_id: Optional[str], comparison_doc_ids: Optional[List[str]] = None):
     """Background task to execute the review process with progress updates."""
     from sqlmodel import Session as SyncSession
 
@@ -100,6 +100,7 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
         doc = session.get(Document, document_id)
         if not doc:
             task.status = TaskStatus.FAILED.value
+            task.error_message = "Document not found"
             session.commit()
             return
 
@@ -157,7 +158,8 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                     result_code=result["result_code"],
                     reasoning=result["reasoning"],
                     evidence=result["evidence"],
-                    suggestion=result["suggestion"]
+                    suggestion=result["suggestion"],
+                    owner_id=owner_id
                 )
                 session.add(result_item)
 
@@ -175,7 +177,8 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                     result_code="MANUAL_CHECK",
                     reasoning=f"处理出错: {str(e)}",
                     evidence="",
-                    suggestion="请人工审查"
+                    suggestion="请人工审查",
+                    owner_id=owner_id
                 )
                 session.add(result_item)
                 completed += 1
@@ -239,7 +242,8 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                         comparison_document_id=comp_id,
                         conflict_score=len(conflicts) / len(review_chunks) if review_chunks else 0.0,
                         summary=f"Found {len(conflicts)} potential conflicts in sampled chunks.",
-                        details=json.dumps(conflicts, ensure_ascii=False)
+                        details=json.dumps(conflicts, ensure_ascii=False),
+                        owner_id=owner_id
                     )
                     session.add(comparison_result)
                     session.commit()
@@ -257,11 +261,19 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
 
 class ReviewService:
     @staticmethod
-    def get_reviews(session: Session) -> List[Dict]:
+    def get_reviews(session: Session, owner_id: Optional[str] = None) -> List[Dict]:
         """Get all review tasks with document and rule group info."""
-        tasks = session.exec(
-            select(ReviewTask).order_by(ReviewTask.created_at.desc())
-        ).all()
+        # Query builder
+        query = select(ReviewTask)
+        
+        # Apply owner_id filter if provided
+        if owner_id:
+             query = query.where(ReviewTask.owner_id == owner_id)
+
+        # Order by created_at desc
+        query = query.order_by(ReviewTask.created_at.desc())
+        
+        tasks = session.exec(query).all()
 
         # Enrich with document and rule group names
         enriched = []
@@ -295,9 +307,13 @@ class ReviewService:
     async def start_review(
         session: Session,
         data: ReviewStartRequest,
-        background_tasks: BackgroundTasks
+        background_tasks: BackgroundTasks,
+        owner_id: Optional[str]
     ) -> Dict:
         """Start a new review task."""
+        # Convert owner_id to string if it's UUID
+        owner_id = str(owner_id) if owner_id else None
+
         # Validate document exists and is processed
         doc = session.get(Document, data.document_id)
         if not doc:
@@ -331,7 +347,8 @@ class ReviewService:
             rule_group_names=", ".join(group_names),
             comparison_document_ids=",".join(data.comparison_document_ids) if data.comparison_document_ids else None,
             status=TaskStatus.PENDING.value,
-            progress=0
+            progress=0,
+            owner_id=owner_id
         )
         session.add(task)
         session.commit()
@@ -345,6 +362,7 @@ class ReviewService:
             task.id,
             data.document_id,
             rule_ids,
+            owner_id,
             data.comparison_document_ids
         )
 

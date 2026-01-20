@@ -7,15 +7,25 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Dependency directories
+node_modules/
+jspm_packages/
+.pnpm-store/
+
+# Typescript / Frontend Build
+dist/
+dist-ssr/
 *.local
+.vite/
+coverage/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
@@ -23,5 +33,49 @@ dist-ssr
 *.sln
 *.sw?
 
-# Test data
-testdata/
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Python Virtual Environments
+venv/
+env/
+ENV/
+.env/
+.venv/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Project Specific - Data & Uploads
+backend/uploads/
+backend/static/
+.roo/
+
+# OS Generated
+Thumbs.db
+ehthumbs.db
+Desktop.ini

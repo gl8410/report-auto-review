@@ -4,3 +4,5 @@ from .document import Document, DocumentStatus
 from .review import ReviewTask, ReviewResultItem, TaskStatus, ResultCode
 from .analysis import HistoryAnalysisTask, InferredOpinion, AnalysisStatus, OpinionStatus
 from .chunk import DocumentChunk
+from .user import Profile
+from .comparison import ComparisonDocument, ComparisonResult, ComparisonDocumentStatus

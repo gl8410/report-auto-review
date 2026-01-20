@@ -1,26 +1,47 @@
 from typing import List, Dict
-from fastapi import APIRouter, Depends, BackgroundTasks, Response
+from fastapi import APIRouter, Depends, BackgroundTasks, Response, HTTPException, status
 from sqlmodel import Session
-from backend.api.deps import get_session
+from backend.api.deps import get_session, get_current_user
 from backend.schemas.review import ReviewStartRequest, ResultUpdateRequest
 from backend.services.review_service import ReviewService
+from backend.models.user import Profile
 from backend.services.report_service import ReportService
 
 router = APIRouter()
 
 @router.get("/reviews")
-def get_reviews(session: Session = Depends(get_session)):
+def get_reviews(session: Session = Depends(get_session), current_user: Profile = Depends(get_current_user)):
     """Get all review tasks with document and rule group info."""
-    return ReviewService.get_reviews(session)
+    return ReviewService.get_reviews(session, str(current_user.id))
 
 @router.post("/reviews/start")
 async def start_review(
     data: ReviewStartRequest,
     background_tasks: BackgroundTasks,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: Profile = Depends(get_current_user)
 ):
     """Start a new review task."""
-    return await ReviewService.start_review(session, data, background_tasks)
+    if current_user.credits <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Insufficient credits"
+        )
+    
+    # Deduct credit
+    current_user.credits -= 1
+    session.add(current_user)
+    session.commit()
+    session.refresh(current_user)
+
+    try:
+        return await ReviewService.start_review(session, data, background_tasks, str(current_user.id))
+    except Exception as e:
+        # Refund credit if start failed
+        current_user.credits += 1
+        session.add(current_user)
+        session.commit()
+        raise e
 
 @router.get("/reviews/{task_id}")
 def get_review_task(task_id: str, session: Session = Depends(get_session)):

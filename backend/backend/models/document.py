@@ -25,4 +25,5 @@ class Document(SQLModel, table=True):
     status: str = DocumentStatus.UPLOADING.value
     error_message: Optional[str] = None  # Error message if parsing failed
     meta_info: Optional[str] = None  # JSON string
+    owner_id: Optional[str] = Field(default=None, index=True)
     upload_time: datetime = Field(default_factory=datetime.utcnow)

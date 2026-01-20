@@ -25,6 +25,7 @@ class ComparisonDocument(SQLModel, table=True):
     status: str = ComparisonDocumentStatus.UPLOADING.value
     error_message: Optional[str] = None  # Error message if parsing failed
     description: Optional[str] = None
+    owner_id: Optional[str] = Field(default=None, index=True)
     upload_time: datetime = Field(default_factory=datetime.utcnow)
 
 class ComparisonResult(SQLModel, table=True):
@@ -39,5 +40,6 @@ class ComparisonResult(SQLModel, table=True):
     conflict_score: float = 0.0  # 0-1 score of conflict likelihood
     summary: Optional[str] = None  # Overall summary of comparison
     details: Optional[str] = None  # JSON string containing specific conflict points
+    owner_id: Optional[str] = Field(default=None, index=True)
     
     created_at: datetime = Field(default_factory=datetime.utcnow)

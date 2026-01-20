@@ -1,20 +1,42 @@
 import { RuleGroup, Rule, Document, DocumentChunk, ReviewTask, ReviewResult, ComparisonDocument, ComparisonResult } from '../types';
+import { supabase } from './supabase';
 
-// const API_BASE = 'http://localhost:8000/api/v1';
-const API_BASE = 'http://10.254.68.193:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api/v1';
+// const API_BASE = 'http://10.254.68.193:8000/api/v1';
+
+const getHeaders = async (contentType = 'application/json') => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers: HeadersInit = { 'Content-Type': contentType };
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`;
+  }
+  return headers;
+};
+
+// Helper for requests without body (GET, DELETE) or with FormData
+const getAuthHeaders = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers: HeadersInit = {};
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`;
+  }
+  return headers;
+};
 
 export const api = {
   // ============== Rule Groups ==============
   getRuleGroups: async (): Promise<RuleGroup[]> => {
-    const res = await fetch(`${API_BASE}/rule-groups`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/rule-groups`, { headers });
     if (!res.ok) throw new Error('Failed to fetch rule groups');
     return res.json();
   },
 
   createRuleGroup: async (name: string, description: string, parentId?: string): Promise<RuleGroup> => {
+    const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/rule-groups`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ name, description, parent_id: parentId })
     });
     if (!res.ok) {
@@ -25,9 +47,10 @@ export const api = {
   },
 
   updateRuleGroup: async (groupId: string, name: string, description?: string, parentId?: string): Promise<RuleGroup> => {
+    const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ name, description, parent_id: parentId })
     });
     if (!res.ok) {
@@ -38,7 +61,8 @@ export const api = {
   },
 
   deleteRuleGroup: async (groupId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/rule-groups/${groupId}`, { method: 'DELETE' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/rule-groups/${groupId}`, { method: 'DELETE', headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to delete group');
@@ -49,15 +73,17 @@ export const api = {
   getRules: async (groupId: string, recursive: boolean = false): Promise<Rule[]> => {
     const url = new URL(`${API_BASE}/rule-groups/${groupId}/rules`);
     if (recursive) url.searchParams.append('recursive', 'true');
-    const res = await fetch(url.toString());
+    const headers = await getAuthHeaders();
+    const res = await fetch(url.toString(), { headers });
     if (!res.ok) throw new Error('Failed to fetch rules');
     return res.json();
   },
 
   createRule: async (groupId: string, rule: Partial<Rule>): Promise<Rule> => {
+    const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}/rules`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(rule)
     });
     if (!res.ok) {
@@ -68,9 +94,10 @@ export const api = {
   },
 
   updateRule: async (ruleId: string, rule: Partial<Rule>): Promise<Rule> => {
+    const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/rules/${ruleId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(rule)
     });
     if (!res.ok) {
@@ -81,7 +108,8 @@ export const api = {
   },
 
   deleteRule: async (ruleId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/rules/${ruleId}`, { method: 'DELETE' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/rules/${ruleId}`, { method: 'DELETE', headers });
     if (!res.ok) throw new Error('Failed to delete rule');
   },
 
@@ -89,8 +117,10 @@ export const api = {
   uploadRules: async (groupId: string, file: File) => {
     const formData = new FormData();
     formData.append('file', file);
+    const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}/upload`, {
       method: 'POST',
+      headers,
       body: formData
     });
     if (!res.ok) {
@@ -102,7 +132,8 @@ export const api = {
 
   // ============== CSV Import/Export ==============
   exportRulesCsv: async (groupId: string, groupName: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/rule-groups/${groupId}/export-csv`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/rule-groups/${groupId}/export-csv`, { headers });
     if (!res.ok) throw new Error('Failed to export rules');
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
@@ -118,8 +149,10 @@ export const api = {
   importRulesCsv: async (groupId: string, file: File) => {
     const formData = new FormData();
     formData.append('file', file);
+    const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}/import-csv`, {
       method: 'POST',
+      headers,
       body: formData
     });
     if (!res.ok) {
@@ -131,13 +164,15 @@ export const api = {
 
   // ============== Documents ==============
   getDocuments: async (): Promise<Document[]> => {
-    const res = await fetch(`${API_BASE}/documents`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/documents`, { headers });
     if (!res.ok) throw new Error('Failed to fetch documents');
     return res.json();
   },
 
   getDocument: async (docId: string): Promise<Document> => {
-    const res = await fetch(`${API_BASE}/documents/${docId}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/documents/${docId}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch document');
     return res.json();
   },
@@ -149,6 +184,8 @@ export const api = {
   ): Promise<Document> => {
     const formData = new FormData();
     formData.append('file', file);
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
 
     // Use XMLHttpRequest for progress tracking
     return new Promise((resolve, reject) => {
@@ -202,17 +239,16 @@ export const api = {
 
       // Send request
       xhr.open('POST', `${API_BASE}/documents`);
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
       xhr.send(formData);
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Failed to upload document');
-    }
-    return res.json();
   },
 
   deleteDocument: async (docId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/documents/${docId}`, { method: 'DELETE' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/documents/${docId}`, { method: 'DELETE', headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to delete document');
@@ -220,7 +256,8 @@ export const api = {
   },
 
   retryDocument: async (docId: string): Promise<Document> => {
-    const res = await fetch(`${API_BASE}/documents/${docId}/retry`, { method: 'POST' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/documents/${docId}/retry`, { method: 'POST', headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to retry document');
@@ -229,7 +266,8 @@ export const api = {
   },
 
   downloadDocumentMarkdown: async (docId: string, filename: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/documents/${docId}/download-markdown`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/documents/${docId}/download-markdown`, { headers });
     if (!res.ok) throw new Error('Failed to download markdown');
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
@@ -243,7 +281,8 @@ export const api = {
   },
 
   downloadDocumentOriginal: async (docId: string, filename: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/documents/${docId}/download-original`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/documents/${docId}/download-original`, { headers });
     if (!res.ok) throw new Error('Failed to download original file');
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
@@ -257,16 +296,18 @@ export const api = {
   },
 
   getDocumentChunks: async (docId: string): Promise<DocumentChunk[]> => {
-    const res = await fetch(`${API_BASE}/documents/${docId}/chunks`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/documents/${docId}/chunks`, { headers });
     if (!res.ok) throw new Error('Failed to fetch document chunks');
     return res.json();
   },
 
   // ============== Reviews ==============
   startReview: async (documentId: string, ruleGroupIds: string[], comparisonDocIds?: string[]): Promise<any> => {
+    const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/reviews/start`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         document_id: documentId,
         rule_group_ids: ruleGroupIds,
@@ -281,25 +322,29 @@ export const api = {
   },
 
   getReviewTask: async (taskId: string): Promise<any> => {
-    const res = await fetch(`${API_BASE}/reviews/${taskId}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews/${taskId}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch task status');
     return res.json();
   },
 
   getReviewResults: async (taskId: string): Promise<any[]> => {
-    const res = await fetch(`${API_BASE}/reviews/${taskId}/results`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews/${taskId}/results`, { headers });
     if (!res.ok) throw new Error('Failed to fetch results');
     return res.json();
   },
 
   getReviewTasks: async (): Promise<any[]> => {
-    const res = await fetch(`${API_BASE}/reviews`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews`, { headers });
     if (!res.ok) throw new Error('Failed to fetch review tasks');
     return res.json();
   },
 
   deleteReviewTask: async (taskId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/reviews/${taskId}`, { method: 'DELETE' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews/${taskId}`, { method: 'DELETE', headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to delete review task');
@@ -307,7 +352,8 @@ export const api = {
   },
 
   cancelReviewTask: async (taskId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/reviews/${taskId}/cancel`, { method: 'POST' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews/${taskId}/cancel`, { method: 'POST', headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to cancel review task');
@@ -316,7 +362,8 @@ export const api = {
 
   // ============== Review Result Items ==============
   getResult: async (resultId: string): Promise<ReviewResult> => {
-    const res = await fetch(`${API_BASE}/results/${resultId}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/results/${resultId}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch result');
     return res.json();
   },
@@ -327,9 +374,10 @@ export const api = {
     evidence?: string;
     suggestion?: string;
   }): Promise<ReviewResult> => {
+    const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/results/${resultId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data)
     });
     if (!res.ok) {
@@ -340,7 +388,8 @@ export const api = {
   },
 
   deleteResult: async (resultId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/results/${resultId}`, { method: 'DELETE' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/results/${resultId}`, { method: 'DELETE', headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to delete result');
@@ -349,7 +398,8 @@ export const api = {
 
   // ============== Summary PDF Report ==============
   downloadSummaryPdf: async (taskId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/reviews/${taskId}/summary-pdf`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews/${taskId}/summary-pdf`, { headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to generate PDF');
@@ -367,12 +417,14 @@ export const api = {
 
   // Legacy aliases for backward compatibility
   getTaskStatus: async (taskId: string): Promise<ReviewTask> => {
-    const res = await fetch(`${API_BASE}/reviews/${taskId}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews/${taskId}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch task status');
     return res.json();
   },
   getResults: async (taskId: string): Promise<ReviewResult[]> => {
-    const res = await fetch(`${API_BASE}/reviews/${taskId}/results`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews/${taskId}/results`, { headers });
     if (!res.ok) throw new Error('Failed to fetch results');
     return res.json();
   },
@@ -382,9 +434,11 @@ export const api = {
     const formData = new FormData();
     draftFiles.forEach(f => formData.append('draft_files', f));
     approvedFiles.forEach(f => formData.append('approved_files', f));
+    const headers = await getAuthHeaders();
 
     const res = await fetch(`${API_BASE}/history-analysis`, {
       method: 'POST',
+      headers,
       body: formData
     });
     if (!res.ok) {
@@ -395,15 +449,17 @@ export const api = {
   },
 
   getHistoryAnalysis: async (taskId: string): Promise<any> => {
-    const res = await fetch(`${API_BASE}/history-analysis/${taskId}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/history-analysis/${taskId}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch history analysis');
     return res.json();
   },
 
   updateOpinion: async (opinionId: string, data: { opinion?: string, risk_level?: string, review_type?: string }): Promise<any> => {
+    const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/history-analysis/opinions/${opinionId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data)
     });
     if (!res.ok) throw new Error('Failed to update opinion');
@@ -411,21 +467,27 @@ export const api = {
   },
 
   deleteOpinion: async (opinionId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/history-analysis/opinions/${opinionId}`, { method: 'DELETE' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/history-analysis/opinions/${opinionId}`, { method: 'DELETE', headers });
     if (!res.ok) throw new Error('Failed to delete opinion');
   },
 
   getAnalysisFile: async (taskId: string, fileType: 'draft' | 'approved', fileIndex: number): Promise<string> => {
-    const res = await fetch(`${API_BASE}/history-analysis/files/${taskId}/${fileType}/${fileIndex}`);
+    // Handling auth for blob fetch might be tricky if backend requires it.
+    // For now assuming getAuthHeaders works or we add token to URL?
+    // Headers is better.
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/history-analysis/files/${taskId}/${fileType}/${fileIndex}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch analysis file');
     const blob = await res.blob();
     return URL.createObjectURL(blob);
   },
 
   convertOpinionToRule: async (opinionId: string, ruleGroupIds: string[]): Promise<any> => {
+    const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/history-analysis/opinions/${opinionId}/convert`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ rule_group_ids: ruleGroupIds })
     });
     if (!res.ok) throw new Error('Failed to convert opinion to rule');
@@ -434,13 +496,15 @@ export const api = {
 
   // ============== Comparison Documents (Module 6) ==============
   getComparisonDocuments: async (): Promise<ComparisonDocument[]> => {
-    const res = await fetch(`${API_BASE}/comparison-documents`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/comparison-documents`, { headers });
     if (!res.ok) throw new Error('Failed to fetch comparison documents');
     return res.json();
   },
 
   getComparisonDocument: async (docId: string): Promise<ComparisonDocument> => {
-    const res = await fetch(`${API_BASE}/comparison-documents/${docId}`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch comparison document');
     return res.json();
   },
@@ -452,6 +516,8 @@ export const api = {
   ): Promise<ComparisonDocument> => {
     const formData = new FormData();
     formData.append('file', file);
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
 
     // Use XMLHttpRequest for progress tracking
     return new Promise((resolve, reject) => {
@@ -505,12 +571,16 @@ export const api = {
 
       // Send request
       xhr.open('POST', `${API_BASE}/comparison-documents`);
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
       xhr.send(formData);
     });
   },
 
   deleteComparisonDocument: async (docId: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/comparison-documents/${docId}`, { method: 'DELETE' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}`, { method: 'DELETE', headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to delete comparison document');
@@ -518,7 +588,8 @@ export const api = {
   },
 
   retryComparisonDocument: async (docId: string): Promise<ComparisonDocument> => {
-    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/retry`, { method: 'POST' });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/retry`, { method: 'POST', headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Failed to retry comparison document');
@@ -527,7 +598,8 @@ export const api = {
   },
 
   downloadComparisonMarkdown: async (docId: string, filename: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/download-markdown`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/download-markdown`, { headers });
     if (!res.ok) throw new Error('Failed to download markdown');
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
@@ -541,7 +613,8 @@ export const api = {
   },
 
   downloadComparisonOriginal: async (docId: string, filename: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/download-original`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/comparison-documents/${docId}/download-original`, { headers });
     if (!res.ok) throw new Error('Failed to download original file');
     const blob = await res.blob();
     const url = window.URL.createObjectURL(blob);
@@ -555,7 +628,8 @@ export const api = {
   },
 
   getComparisonResults: async (taskId: string): Promise<ComparisonResult[]> => {
-    const res = await fetch(`${API_BASE}/reviews/${taskId}/comparison-results`);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/reviews/${taskId}/comparison-results`, { headers });
     if (!res.ok) throw new Error('Failed to fetch comparison results');
     return res.json();
   }

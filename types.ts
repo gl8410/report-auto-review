@@ -98,6 +98,7 @@ export enum AppStep {
   Review = 'REVIEW',
   Report = 'REPORT',
   HistoryAnalysis = 'HISTORY_ANALYSIS',
+  Profile = 'PROFILE',
   Comparison = 'COMPARISON'
 }
 

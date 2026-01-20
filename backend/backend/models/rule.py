@@ -27,6 +27,7 @@ class RuleGroup(SQLModel, table=True):
     name: str = Field(index=True)
     description: Optional[str] = None
     parent_id: Optional[str] = Field(default=None, foreign_key="rule_groups.id", index=True)
+    owner_id: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
@@ -45,6 +46,7 @@ class Rule(SQLModel, table=True):
     content: str  # 规则具体内容
     review_type: Optional[str] = None  # 审查类型
     risk_level: str = "中风险"  # 风险等级: 低风险/中风险/高风险
+    owner_id: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships

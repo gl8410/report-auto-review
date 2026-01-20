@@ -31,6 +31,8 @@ class ReviewTask(SQLModel, table=True):
     progress: int = 0  # 0-100
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    owner_id: Optional[str] = Field(default=None, index=True)
+    error_message: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class ReviewResultItem(SQLModel, table=True):
@@ -44,4 +46,5 @@ class ReviewResultItem(SQLModel, table=True):
     reasoning: Optional[str] = None  # LLM生成的判断理由
     evidence: Optional[str] = None  # 引用原文片段
     suggestion: Optional[str] = None  # 修改建议
+    owner_id: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     # MinerU API
     MINERU_KEY: Optional[str] = None
+    # Supabase
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
 
     # Storage
     UPLOADS_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")

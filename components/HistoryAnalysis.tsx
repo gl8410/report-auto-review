@@ -327,11 +327,17 @@ export const HistoryAnalysis: React.FC = () => {
         let approvedHighlight = '';
         if (selectedOpinion?.evidence) {
             const evidence = selectedOpinion.evidence;
-            const draftMatch = evidence.match(/【修改前】([\s\S]*?)(?=【修改后】|$)/);
-            const approvedMatch = evidence.match(/【修改后】([\s\S]*?)$/);
+            // More robust regex to handle bracket variations and colons
+            const draftMatch = evidence.match(/(?:【|\[)修改前(?:】|\])(?:[:：])?\s*([\s\S]*?)(?=(?:【|\[)修改后(?:】|\])|$)/);
+            const approvedMatch = evidence.match(/(?:【|\[)修改后(?:】|\])(?:[:：])?\s*([\s\S]*?)$/);
             
             if (draftMatch) draftHighlight = draftMatch[1].trim();
             if (approvedMatch) approvedHighlight = approvedMatch[1].trim();
+            
+            // Fallback: if regex fails but evidence is short, use it entirely (might be just one sentence)
+            if (!approvedHighlight && evidence.length < 100 && !evidence.includes('修改前')) {
+                approvedHighlight = evidence.trim();
+            }
         }
 
         const draftFilenames = task?.draft_filenames ? JSON.parse(task.draft_filenames) : [];

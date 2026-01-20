@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../services/api';
 import { Document, RuleGroup, ComparisonDocument } from '../types';
 import { Loader2, Play, CheckCircle2, AlertCircle, FileText, Shield, XCircle, Clock, BarChart3, RefreshCw, CheckSquare, Square, FileDiff } from 'lucide-react';
+import { ReviewTaskList } from './ReviewTaskList';
 
 interface ReviewEngineProps {
   onGoToReports: () => void;
@@ -123,21 +124,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
     setTaskDetails(null);
 
     try {
-      // Note: api.startReview needs to be updated to accept comparisonDocIds
-      // We'll need to update api.ts first or pass it in a way the backend accepts if we modified api.ts
-      // Assuming api.startReview signature is updated or we pass an object
-      // Let's check api.ts again. It currently takes (documentId, ruleGroupIds).
-      // We need to update api.ts startReview to accept comparisonDocIds.
-      // But for now, let's assume we will update api.ts in the next step or use 'any' cast if needed.
-      // Actually I should have updated api.ts startReview method.
-      // Let's update api.ts startReview method first.
-      // Wait, I can't update api.ts in the middle of this replacement.
-      // I will update api.ts startReview signature in the next step.
-      // For now I will call it with extra argument and let TS complain or cast it.
-      // But wait, I am replacing the whole file content.
-
-      // Let's assume api.startReview is updated.
-      const result = await (api as any).startReview(selectedDocId, selectedGroupIds, selectedCompDocIds);
+      const result = await api.startReview(selectedDocId, selectedGroupIds, selectedCompDocIds);
 
       setActiveTaskId(result.task_id);
       setTotalRules(result.total_rules);
@@ -208,6 +195,12 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
 
   const flatGroups = flattenGroups(groups);
 
+  const handleSelectTask = (taskId: string) => {
+    setActiveTaskId(taskId);
+    setTaskDetails(null); // Force refresh
+    localStorage.setItem(STORAGE_KEY, taskId);
+  };
+
   // Show loading while checking for active task on mount
   if (restoringTask) {
     return (
@@ -218,7 +211,9 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
     );
   }
 
-  if (activeTaskId && taskDetails) {
+  const renderExecutionView = () => {
+    if (!taskDetails) return null; // Should be handled by loading state below
+
     const { status, progress, stats, document_name, rule_group_name, rule_group_names, results_count } = taskDetails;
     const isCompleted = status === 'COMPLETED';
     const isFailed = status === 'FAILED';
@@ -228,7 +223,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
     const displayGroupName = rule_group_names || rule_group_name;
 
     return (
-      <div className="max-w-3xl mx-auto mt-8 bg-white p-8 rounded-xl shadow-lg border border-slate-200">
+      <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-slate-200">
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-slate-900 mb-2">
             {isCompleted ? '✅ 审查完成' : isFailed ? '❌ 审查失败' : isCancelled ? '🛑 审查已终止' : '🔍 审查进行中'}
@@ -331,13 +326,6 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
         {/* Action Buttons */}
         {(isCompleted || isFailed || isCancelled) && (
           <div className="flex justify-center gap-4 pt-4 border-t border-slate-100">
-            <button
-              onClick={resetReview}
-              className="px-4 py-2 text-slate-600 hover:text-slate-900 flex items-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              开始新审查
-            </button>
             {isCompleted && (
               <button
                 onClick={onGoToReports}
@@ -351,28 +339,59 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
         )}
 
         {error && (
-          <div className="text-red-600 bg-red-50 p-4 rounded-lg flex items-center justify-center gap-2 mt-4">
-            <AlertCircle className="w-5 h-5" /> {error}
+          <div className="text-center text-red-600 bg-red-50 p-3 rounded-lg mt-4">
+            {error}
           </div>
         )}
       </div>
     );
-  }
+  };
 
   // Show loading state while waiting for first poll
   if (activeTaskId && !taskDetails) {
     return (
-      <div className="max-w-2xl mx-auto mt-16 text-center bg-white p-8 rounded-xl shadow-lg border border-slate-200">
-        <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-indigo-600" />
-        <h2 className="text-xl font-bold text-slate-900 mb-2">正在启动审查任务...</h2>
-        <p className="text-slate-500">共 {totalRules} 条规则待审查</p>
+      <div className="flex gap-6 max-w-7xl mx-auto pr-4">
+        <div className="w-1/4">
+            <ReviewTaskList onSelectTask={handleSelectTask} activeTaskId={activeTaskId} />
+        </div>
+        <div className="flex-1">
+            <div className="max-w-2xl mx-auto mt-16 text-center bg-white p-8 rounded-xl shadow-lg border border-slate-200">
+                <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-indigo-600" />
+                <h2 className="text-xl font-bold text-slate-900 mb-2">正在加载审查任务...</h2>
+            </div>
+        </div>
       </div>
     );
   }
 
+  if (activeTaskId && taskDetails) {
+      return (
+        <div className="flex gap-6 max-w-7xl mx-auto pr-4">
+            <div className="w-1/4">
+                <div className="mb-4">
+                    <button 
+                        onClick={resetReview}
+                        className="w-full py-2 px-4 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 flex items-center justify-center gap-2"
+                    >
+                        <RefreshCw className="w-4 h-4" /> 新建任务
+                    </button>
+                </div>
+                <ReviewTaskList onSelectTask={handleSelectTask} activeTaskId={activeTaskId} />
+            </div>
+            <div className="flex-1">
+                {renderExecutionView()}
+            </div>
+        </div>
+      );
+  }
+
   // Selection View
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="flex gap-6 max-w-7xl mx-auto pr-4">
+      <div className="w-1/4">
+         <ReviewTaskList onSelectTask={handleSelectTask} activeTaskId={null} />
+      </div>
+      <div className="flex-1 space-y-8">
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-slate-900">审查中心</h2>
         <p className="text-slate-500 mt-2">选择文档和规则组，启动自动化审查任务</p>
@@ -497,6 +516,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
           {error}
         </div>
       )}
+    </div>
     </div>
   );
 };

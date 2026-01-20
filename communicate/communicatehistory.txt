@@ -231,3 +231,13 @@ could be a lot of work, we make a plan before impletation
 
 
 Further more, now the strcture of this whole app is for single user, I wanna expand its use to multiple users, with "Supabase" as the user management database, each user will have "credits" to run the reviewing tasks, like, can have 10 credits, can run 10 reviewing tasks, after one task is done, 1 credit will be consumed, if no credit left, can not run any more tasks, how should we do that?
+
+
+make a plan in the communicate folder for solving this problem with following needs:
+1.use supabase as the user management database, superbase is defined in the .env file;
+2.each user will have "credits" to run the reviewing tasks, like, can have 10 credits, can run 10 reviewing tasks, after one task is done, 1 credit will be consumed, if no credit left, can not run any more tasks,credits are stored in the supabase database;
+3.add owner of the rule_group, comparison_file, files(to be reviewed),task, review results, so that only the owner can delete or update them;
+4.make all the process async, so that user can upload multiple files or start multiple reviewing tasks at the same time;
+5.add start time, end time to review process, make review process in review center a item in the list, while multiple reviewing tasks are running, user can check the progress of each task in the list, and the status of each task will be updated in real time.
+
+according to above plan, make a new plan in the communicate folder for implementation, i will examine it before real implementation.

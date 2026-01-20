@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, FileText, Play, BarChart3, History } from 'lucide-react';
+import { ShieldCheck, FileText, Play, BarChart3, History, User } from 'lucide-react';
 import { AppStep } from '../types';
 
 interface LayoutProps {
@@ -53,6 +53,14 @@ export const Layout: React.FC<LayoutProps> = ({ currentStep, onNavigate, childre
                 </button>
               );
             })}
+            {/* Profile Button */}
+            <button
+                onClick={() => onNavigate(AppStep.Profile)}
+                className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${currentStep === AppStep.Profile ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}
+            >
+                <User className={`w-4 h-4 mr-2 ${currentStep === AppStep.Profile ? 'text-indigo-600' : 'text-slate-400'}`} />
+                个人中心
+            </button>
           </nav>
         </div>
       </header>
