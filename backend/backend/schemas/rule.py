@@ -5,12 +5,14 @@ from pydantic import BaseModel, Field
 class RuleGroupCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    type: str = "private"
     parent_id: Optional[str] = None
 
 class RuleGroupResponse(BaseModel):
     id: str
     name: str
     description: Optional[str]
+    type: str = "private"
     parent_id: Optional[str] = None
     children: Optional[List["RuleGroupResponse"]] = []
     created_at: datetime

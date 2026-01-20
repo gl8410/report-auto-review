@@ -17,6 +17,7 @@ export interface RuleGroup {
   id: string;
   name: string;
   description?: string;
+  type?: 'private' | 'public';
   parent_id?: string;
   children?: RuleGroup[];
   created_at?: string;

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import json
 from typing import List, Optional, Dict, Any, Union
 from fastapi import HTTPException, BackgroundTasks
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_
 from backend.core.db import engine
 from backend.models.review import ReviewTask, ReviewResultItem, TaskStatus
 from backend.models.document import Document, DocumentStatus
@@ -268,7 +268,7 @@ class ReviewService:
         
         # Apply owner_id filter if provided
         if owner_id:
-             query = query.where(ReviewTask.owner_id == owner_id)
+             query = query.where(or_(ReviewTask.owner_id == owner_id, ReviewTask.owner_id == None))
 
         # Order by created_at desc
         query = query.order_by(ReviewTask.created_at.desc())

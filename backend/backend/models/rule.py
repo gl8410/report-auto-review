@@ -19,6 +19,11 @@ class Importance(str, Enum):
     MEDIUM = "中等"
     HIGH = "重要"
 
+class RuleGroupType(str, Enum):
+    """规则组类型枚举"""
+    PRIVATE = "private"
+    PUBLIC = "public"
+
 class RuleGroup(SQLModel, table=True):
     """规则组表"""
     __tablename__ = "rule_groups"
@@ -26,6 +31,7 @@ class RuleGroup(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     name: str = Field(index=True)
     description: Optional[str] = None
+    type: str = Field(default=RuleGroupType.PRIVATE, index=True)
     parent_id: Optional[str] = Field(default=None, foreign_key="rule_groups.id", index=True)
     owner_id: Optional[str] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -241,3 +241,8 @@ make a plan in the communicate folder for solving this problem with following ne
 5.add start time, end time to review process, make review process in review center a item in the list, while multiple reviewing tasks are running, user can check the progress of each task in the list, and the status of each task will be updated in real time.
 
 according to above plan, make a new plan in the communicate folder for implementation, i will examine it before real implementation.
+
+
+
+
+update rule_group management module, besides uuid to distinct rule_groups, add a new column named "type", when user want to create a new rule_group, he must select "type" for private, and public, user could see his own  rule_groups and public groups

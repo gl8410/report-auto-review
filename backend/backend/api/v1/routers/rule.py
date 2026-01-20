@@ -4,8 +4,9 @@ from typing import List
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session, select
-from backend.api.deps import get_session
+from sqlmodel import Session, select, or_
+from backend.api.deps import get_session, get_current_user
+from backend.models.user import Profile
 from backend.models.rule import RuleGroup, Rule
 from backend.models.review import ReviewTask, ReviewResultItem
 from backend.models.comparison import ComparisonResult
@@ -25,14 +26,32 @@ VALID_RISK_LEVELS = ["低风险", "中风险", "高风险"]
 # ============== Rule Group Endpoints ==============
 
 @router.get("/rule-groups", response_model=List[RuleGroupResponse])
-def get_rule_groups(session: Session = Depends(get_session)):
+def get_rule_groups(
+    session: Session = Depends(get_session),
+    current_user: Profile = Depends(get_current_user)
+):
     """Get all rule groups (hierarchical tree, top-level only)."""
-    # Only select top-level groups
-    groups = session.exec(select(RuleGroup).where(RuleGroup.parent_id == None).order_by(RuleGroup.created_at.desc())).all()
+    # Only select top-level groups, filtered by visibility
+    query = select(RuleGroup).where(RuleGroup.parent_id == None)
+    
+    # Filter: (owner is me) OR (type is public) OR (owner is NULL/Legacy)
+    query = query.where(
+        or_(
+            RuleGroup.owner_id == str(current_user.id),
+            RuleGroup.type == "public",
+            RuleGroup.owner_id == None
+        )
+    )
+    
+    groups = session.exec(query.order_by(RuleGroup.created_at.desc())).all()
     return groups
 
 @router.post("/rule-groups", response_model=RuleGroupResponse)
-def create_rule_group(data: RuleGroupCreate, session: Session = Depends(get_session)):
+def create_rule_group(
+    data: RuleGroupCreate,
+    session: Session = Depends(get_session),
+    current_user: Profile = Depends(get_current_user)
+):
     """Create a new rule group."""
     if data.parent_id:
         parent = session.get(RuleGroup, data.parent_id)
@@ -42,7 +61,9 @@ def create_rule_group(data: RuleGroupCreate, session: Session = Depends(get_sess
     group = RuleGroup(
         name=data.name,
         description=data.description,
-        parent_id=data.parent_id
+        parent_id=data.parent_id,
+        type=data.type,
+        owner_id=str(current_user.id)
     )
     session.add(group)
     session.commit()
@@ -58,15 +79,33 @@ def get_rule_group(group_id: str, session: Session = Depends(get_session)):
     return group
 
 @router.put("/rule-groups/{group_id}", response_model=RuleGroupResponse)
-def update_rule_group(group_id: str, data: RuleGroupCreate, session: Session = Depends(get_session)):
+def update_rule_group(
+    group_id: str,
+    data: RuleGroupCreate,
+    session: Session = Depends(get_session),
+    current_user: Profile = Depends(get_current_user)
+):
     """Update a rule group."""
     group = session.get(RuleGroup, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Rule group not found")
     
+    # Check permission: Allow if owner OR has no owner(legacy) OR is public
+    is_owner = str(current_user.id) == group.owner_id
+    is_legacy = group.owner_id is None
+    is_public = group.type == "public"
+    
+    if not (is_owner or is_legacy or is_public):
+        raise HTTPException(status_code=403, detail="Not authorized to update this group")
+
     group.name = data.name
     if data.description is not None:
         group.description = data.description
+    
+    # Update type if provided (assuming RuleGroupCreate has type now)
+    if data.type is not None:
+        group.type = data.type
+
     # Allow moving group to another parent
     if data.parent_id is not None:
          # Prevent circular reference
@@ -125,7 +164,11 @@ def delete_group_recursive(session: Session, group: RuleGroup):
     session.delete(group)
 
 @router.delete("/rule-groups/{group_id}")
-def delete_rule_group(group_id: str, session: Session = Depends(get_session)):
+def delete_rule_group(
+    group_id: str,
+    session: Session = Depends(get_session),
+    current_user: Profile = Depends(get_current_user)
+):
     """Delete a rule group and all its sub-groups and rules."""
     print(f"Request to delete rule group: {group_id}")
     try:
@@ -133,6 +176,10 @@ def delete_rule_group(group_id: str, session: Session = Depends(get_session)):
         if not group:
             raise HTTPException(status_code=404, detail="Rule group not found")
         
+        # Check permission: owner or legacy
+        if group.owner_id and group.owner_id != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized to delete this group")
+
         delete_group_recursive(session, group)
         session.commit()
         print("Deletion successful")

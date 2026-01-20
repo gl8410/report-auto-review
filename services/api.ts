@@ -32,12 +32,12 @@ export const api = {
     return res.json();
   },
 
-  createRuleGroup: async (name: string, description: string, parentId?: string): Promise<RuleGroup> => {
+  createRuleGroup: async (name: string, description: string, type: string, parentId?: string): Promise<RuleGroup> => {
     const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/rule-groups`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ name, description, parent_id: parentId })
+      body: JSON.stringify({ name, description, type, parent_id: parentId })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -46,12 +46,12 @@ export const api = {
     return res.json();
   },
 
-  updateRuleGroup: async (groupId: string, name: string, description?: string, parentId?: string): Promise<RuleGroup> => {
+  updateRuleGroup: async (groupId: string, name: string, description?: string, type?: string, parentId?: string): Promise<RuleGroup> => {
     const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/rule-groups/${groupId}`, {
       method: 'PUT',
       headers,
-      body: JSON.stringify({ name, description, parent_id: parentId })
+      body: JSON.stringify({ name, description, type, parent_id: parentId })
     });
     if (!res.ok) {
       const err = await res.json();

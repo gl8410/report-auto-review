@@ -79,3 +79,7 @@ backend/static/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Communication History & Test Output
+communicate/communicatehistory.txt
+testdata/display/

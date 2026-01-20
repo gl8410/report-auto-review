@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useResizable } from '../hooks/useResizable';
 import { Rule, RuleGroup } from '../types';
-import { Upload, Plus, Trash2, Loader2, FolderPlus, Folder, Edit2, Download, FileUp, X, Check, ChevronRight, ChevronDown } from 'lucide-react';
+import { Upload, Plus, Trash2, Loader2, FolderPlus, Folder, Edit2, Download, FileUp, X, Check, ChevronRight, ChevronDown, Globe, Lock } from 'lucide-react';
 import { api } from '../services/api';
 
 // Valid options for dropdowns
@@ -17,6 +17,7 @@ export const RuleManager: React.FC = () => {
   // Group creation state
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupParentId, setNewGroupParentId] = useState<string>("");
+  const [newGroupType, setNewGroupType] = useState<"private" | "public">("private");
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
   // Expanded state for tree view
@@ -25,6 +26,7 @@ export const RuleManager: React.FC = () => {
   // Edit states
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupType, setEditGroupType] = useState<"private" | "public">("private");
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [editRuleData, setEditRuleData] = useState<Partial<Rule>>({});
   const [showNewRuleForm, setShowNewRuleForm] = useState(false);
@@ -102,25 +104,34 @@ export const RuleManager: React.FC = () => {
     if (!newGroupName.trim()) return;
     try {
       const parentId = newGroupParentId || undefined;
-      await api.createRuleGroup(newGroupName, "User created group", parentId);
+      await api.createRuleGroup(newGroupName, "User created group", newGroupType, parentId);
       await loadGroups(); // Reload to get updated tree
       setNewGroupName("");
       setNewGroupParentId("");
+      setNewGroupType("private");
       setIsCreatingGroup(false);
     } catch (e: any) {
       alert(`Error creating group: ${e.message}`);
     }
   };
 
-  const handleRenameGroup = async (groupId: string) => {
+  const handleUpdateGroup = async (groupId: string) => {
     if (!editGroupName.trim()) return;
     try {
-      await api.updateRuleGroup(groupId, editGroupName);
+      // Pass existing parentId to avoid moving if not intended, but API handles undefined nicely?
+      // Actually updateRuleGroup signature is (id, name, desc, type, parentId).
+      // Here we only support renaming and changing type via inline edit for now?
+      // Or just name? Use null/undefined for others if we don't want to change.
+      // But we should probably keep existing values.
+      const group = groups.find(g => g.id === groupId) || groups.flatMap(p => p.children || []).find(c => c.id === groupId);
+      // Finding deep group is hard with flatten.
+      // Let's assume we just update name and type.
+      await api.updateRuleGroup(groupId, editGroupName, undefined, editGroupType);
       await loadGroups();
       setEditingGroupId(null);
       setEditGroupName("");
     } catch (e: any) {
-      alert(`Rename failed: ${e.message}`);
+      alert(`Update failed: ${e.message}`);
     }
   };
 
@@ -166,11 +177,18 @@ export const RuleManager: React.FC = () => {
                 className="flex-1 text-sm border rounded px-2 py-1 min-w-0"
                 value={editGroupName}
                 onChange={e => setEditGroupName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleRenameGroup(group.id)}
-                autoFocus
                 onClick={e => e.stopPropagation()}
               />
-              <button onClick={() => handleRenameGroup(group.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+               <select
+                className="text-xs border rounded px-1 py-1 w-20"
+                value={editGroupType}
+                onChange={e => setEditGroupType(e.target.value as "private" | "public")}
+                onClick={e => e.stopPropagation()}
+              >
+                <option value="private">私有</option>
+                <option value="public">公开</option>
+              </select>
+              <button onClick={() => handleUpdateGroup(group.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
                 <Check className="w-3 h-3" />
               </button>
               <button onClick={() => setEditingGroupId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
@@ -182,13 +200,23 @@ export const RuleManager: React.FC = () => {
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <Folder className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'fill-indigo-200' : ''}`} />
                 <span className="truncate text-sm font-medium">{group.name}</span>
+                {group.type === 'public' ? (
+                  <Globe className="w-3 h-3 text-slate-400" title="Public" />
+                ) : (
+                  <Lock className="w-3 h-3 text-slate-300" title="Private" />
+                )}
               </div>
               <div className="hidden group-hover:flex items-center gap-1 opacity-0 hover:opacity-100">
-                <button onClick={(e) => { e.stopPropagation(); setEditingGroupId(group.id); setEditGroupName(group.name); }} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
-                  <Edit2 className="w-3 h-3" />
-                </button>
                 <button onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group.id); }} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
                   <Trash2 className="w-3 h-3" />
+                </button>
+                <button onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingGroupId(group.id);
+                  setEditGroupName(group.name);
+                  setEditGroupType(group.type || 'private');
+                }} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
+                  <Edit2 className="w-3 h-3" />
                 </button>
               </div>
             </>
@@ -337,6 +365,16 @@ export const RuleManager: React.FC = () => {
                   onChange={e => setNewGroupName(e.target.value)}
                   autoFocus
                 />
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 text-sm border rounded px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={newGroupType}
+                    onChange={e => setNewGroupType(e.target.value as "private" | "public")}
+                  >
+                    <option value="private">私有 (Private)</option>
+                    <option value="public">公开 (Public)</option>
+                  </select>
+                </div>
                 <select
                   className="w-full text-sm border rounded px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500"
                   value={newGroupParentId}
@@ -529,11 +567,11 @@ export const RuleManager: React.FC = () => {
                             </td>
                             <td className="px-4 py-3 align-top">
                               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => startEditRule(rule)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
                                 <button onClick={() => handleDeleteRule(rule.id)} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
                                   <Trash2 className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => startEditRule(rule)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
+                                  <Edit2 className="w-4 h-4" />
                                 </button>
                               </div>
                             </td>
