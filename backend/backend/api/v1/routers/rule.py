@@ -1,6 +1,6 @@
 import io
 import csv
-from typing import List
+from typing import List, Optional
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -25,16 +25,47 @@ VALID_RISK_LEVELS = ["低风险", "中风险", "高风险"]
 
 # ============== Rule Group Endpoints ==============
 
+def build_group_tree_response(group: RuleGroup, user_id: str) -> Optional[RuleGroupResponse]:
+    """
+    Recursively build RuleGroupResponse, filtering out children that are not visible to the user.
+    """
+    # 1. Check if current group is visible (Double check, although caller should have checked root)
+    is_owner = str(user_id) == group.owner_id
+    is_legacy = group.owner_id is None
+    is_public = group.type == "public"
+    
+    if not (is_owner or is_legacy or is_public):
+        return None
+        
+    # 2. Process children recursively
+    filtered_children = []
+    if group.children:
+        for child in group.children:
+             child_resp = build_group_tree_response(child, user_id)
+             if child_resp:
+                 filtered_children.append(child_resp)
+
+    # 3. Construct Response Model
+    return RuleGroupResponse(
+        id=group.id,
+        name=group.name,
+        description=group.description,
+        type=group.type,
+        parent_id=group.parent_id,
+        created_at=group.created_at,
+        children=filtered_children
+    )
+
 @router.get("/rule-groups", response_model=List[RuleGroupResponse])
 def get_rule_groups(
     session: Session = Depends(get_session),
     current_user: Profile = Depends(get_current_user)
 ):
-    """Get all rule groups (hierarchical tree, top-level only)."""
+    """Get all rule groups (hierarchical tree, top-level only), ensuring security visibility recursively."""
     # Only select top-level groups, filtered by visibility
     query = select(RuleGroup).where(RuleGroup.parent_id == None)
     
-    # Filter: (owner is me) OR (type is public) OR (owner is NULL/Legacy)
+    # Filter roots: (owner is me) OR (type is public) OR (owner is NULL/Legacy)
     query = query.where(
         or_(
             RuleGroup.owner_id == str(current_user.id),
@@ -43,8 +74,16 @@ def get_rule_groups(
         )
     )
     
-    groups = session.exec(query.order_by(RuleGroup.created_at.desc())).all()
-    return groups
+    root_groups = session.exec(query.order_by(RuleGroup.created_at.desc())).all()
+    
+    # Build tree with security filtering
+    response_groups = []
+    for group in root_groups:
+        resp = build_group_tree_response(group, str(current_user.id))
+        if resp:
+            response_groups.append(resp)
+            
+    return response_groups
 
 @router.post("/rule-groups", response_model=RuleGroupResponse)
 def create_rule_group(

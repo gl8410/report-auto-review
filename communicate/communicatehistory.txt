@@ -246,3 +246,6 @@ according to above plan, make a new plan in the communicate folder for implement
 
 
 update rule_group management module, besides uuid to distinct rule_groups, add a new column named "type", when user want to create a new rule_group, he must select "type" for private, and public, user could see his own  rule_groups and public groups
+
+
+change the Change Pass feature in User Profile module according to the style in the picture, to update password, user has to enter the existing password

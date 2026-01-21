@@ -38,6 +38,11 @@ export const RuleManager: React.FC = () => {
   });
   const [isConfirmingDeleteGroup, setIsConfirmingDeleteGroup] = useState(false);
 
+  // Header Edit State
+  const [isEditingHeader, setIsEditingHeader] = useState(false);
+  const [editHeaderName, setEditHeaderName] = useState("");
+  const [editHeaderType, setEditHeaderType] = useState<"private" | "public">("private");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
@@ -47,8 +52,12 @@ export const RuleManager: React.FC = () => {
 
   useEffect(() => {
     setIsConfirmingDeleteGroup(false);
+    setIsEditingHeader(false); // Reset header edit state when group changes
     if (selectedGroup) {
       loadRules(selectedGroup.id);
+      // Initialize edit values
+      setEditHeaderName(selectedGroup.name);
+      setEditHeaderType(selectedGroup.type || "private");
     } else {
       setRules([]);
     }
@@ -115,21 +124,20 @@ export const RuleManager: React.FC = () => {
     }
   };
 
-  const handleUpdateGroup = async (groupId: string) => {
-    if (!editGroupName.trim()) return;
+  const handleUpdateGroup = async (groupId: string, name: string, type: "private" | "public") => {
+    if (!name.trim()) return;
     try {
-      // Pass existing parentId to avoid moving if not intended, but API handles undefined nicely?
-      // Actually updateRuleGroup signature is (id, name, desc, type, parentId).
-      // Here we only support renaming and changing type via inline edit for now?
-      // Or just name? Use null/undefined for others if we don't want to change.
-      // But we should probably keep existing values.
-      const group = groups.find(g => g.id === groupId) || groups.flatMap(p => p.children || []).find(c => c.id === groupId);
-      // Finding deep group is hard with flatten.
-      // Let's assume we just update name and type.
-      await api.updateRuleGroup(groupId, editGroupName, undefined, editGroupType);
+      await api.updateRuleGroup(groupId, name, undefined, type);
       await loadGroups();
+      
+      // Update selected group if it was the one edited
+      if (selectedGroup?.id === groupId) {
+        setSelectedGroup(prev => prev ? { ...prev, name, type } : null);
+      }
+      
       setEditingGroupId(null);
       setEditGroupName("");
+      setIsEditingHeader(false);
     } catch (e: any) {
       alert(`Update failed: ${e.message}`);
     }
@@ -149,7 +157,7 @@ export const RuleManager: React.FC = () => {
   };
 
   // Recursive Tree Item Component
-  const GroupTreeItem = ({ group, depth = 0 }: { group: RuleGroup, depth?: number }) => {
+  const GroupTreeItem: React.FC<{ group: RuleGroup, depth?: number }> = ({ group, depth = 0 }) => {
     const hasChildren = group.children && group.children.length > 0;
     const isExpanded = expandedGroups.has(group.id);
     const isSelected = selectedGroup?.id === group.id;
@@ -188,7 +196,7 @@ export const RuleManager: React.FC = () => {
                 <option value="private">私有</option>
                 <option value="public">公开</option>
               </select>
-              <button onClick={() => handleUpdateGroup(group.id)} className="p-1 text-green-600 hover:bg-green-50 rounded">
+              <button onClick={() => handleUpdateGroup(group.id, editGroupName, editGroupType)} className="p-1 text-green-600 hover:bg-green-50 rounded">
                 <Check className="w-3 h-3" />
               </button>
               <button onClick={() => setEditingGroupId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
@@ -416,10 +424,63 @@ export const RuleManager: React.FC = () => {
           ) : (
             <>
               <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-white sticky top-0 z-10">
-                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                  {selectedGroup.name}
-                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-normal border border-slate-200">{rules.length} 条规则</span>
-                </h3>
+                <div className="flex items-center gap-2">
+                  {isEditingHeader ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="text-lg font-bold border rounded px-2 py-1 w-64 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        value={editHeaderName}
+                        onChange={e => setEditHeaderName(e.target.value)}
+                        autoFocus
+                      />
+                      <select
+                        className="text-sm border rounded px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        value={editHeaderType}
+                        onChange={e => setEditHeaderType(e.target.value as "private" | "public")}
+                      >
+                        <option value="private">私有</option>
+                        <option value="public">公开</option>
+                      </select>
+                      <button
+                        onClick={() => handleUpdateGroup(selectedGroup.id, editHeaderName, editHeaderType)}
+                        className="p-1.5 bg-green-50 text-green-600 hover:bg-green-100 rounded transition-colors"
+                        title="保存"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingHeader(false);
+                          setEditHeaderName(selectedGroup.name);
+                          setEditHeaderType(selectedGroup.type || "private");
+                        }}
+                        className="p-1.5 bg-slate-50 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                        title="取消"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 group/title">
+                      <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                        {selectedGroup.name}
+                        {selectedGroup.type === 'public' && <Globe className="w-4 h-4 text-slate-400" title="Public" />}
+                      </h3>
+                      <button
+                        onClick={() => {
+                          setIsEditingHeader(true);
+                          setEditHeaderName(selectedGroup.name);
+                          setEditHeaderType(selectedGroup.type || "private");
+                        }}
+                        className="opacity-0 group-hover/title:opacity-100 p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-all"
+                        title="编辑规则组"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-normal border border-slate-200">{rules.length} 条规则</span>
+                    </div>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button onClick={() => loadRules(selectedGroup.id)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors" title="刷新">
                     <Loader2 className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />

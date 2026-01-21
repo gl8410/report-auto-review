@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class RuleGroupCreate(BaseModel):
     name: str
@@ -9,9 +9,11 @@ class RuleGroupCreate(BaseModel):
     parent_id: Optional[str] = None
 
 class RuleGroupResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     name: str
-    description: Optional[str]
+    description: Optional[str] = None
     type: str = "private"
     parent_id: Optional[str] = None
     children: Optional[List["RuleGroupResponse"]] = []
@@ -25,12 +27,14 @@ class RuleCreate(BaseModel):
     risk_level: str = "中风险"
 
 class RuleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     group_id: str
     clause_number: str
     content: str
-    standard_name: Optional[str]
-    review_type: Optional[str]
+    standard_name: Optional[str] = None
+    review_type: Optional[str] = None
     risk_level: str
 
 class RuleUpdate(BaseModel):
