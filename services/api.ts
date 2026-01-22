@@ -303,6 +303,23 @@ export const api = {
   },
 
   // ============== Reviews ==============
+  getReviewCost: async (ruleGroupIds: string[], comparisonDocIds?: string[]): Promise<{ total_cost: number, breakdown: any, currency: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/reviews/cost`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        rule_group_ids: ruleGroupIds,
+        comparison_document_ids: comparisonDocIds
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to calculate review cost');
+    }
+    return res.json();
+  },
+
   startReview: async (documentId: string, ruleGroupIds: string[], comparisonDocIds?: string[]): Promise<any> => {
     const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/reviews/start`, {

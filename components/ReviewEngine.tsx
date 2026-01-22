@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../services/api';
 import { Document, RuleGroup, ComparisonDocument } from '../types';
-import { Loader2, Play, CheckCircle2, AlertCircle, FileText, Shield, XCircle, Clock, BarChart3, RefreshCw, CheckSquare, Square, FileDiff } from 'lucide-react';
+import { Loader, Play, CheckCircle, AlertCircle, FileText, Shield, XCircle, Clock, BarChart2, RefreshCw, CheckSquare, Square, Files } from 'lucide-react';
 import { ReviewTaskList } from './ReviewTaskList';
 
 interface ReviewEngineProps {
@@ -41,6 +41,11 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [restoringTask, setRestoringTask] = useState(true);
+
+  // Cost Estimation State
+  const [showCostModal, setShowCostModal] = useState(false);
+  const [costEstimate, setCostEstimate] = useState<{ total_cost: number, breakdown: any } | null>(null);
+  const [calculatingCost, setCalculatingCost] = useState(false);
 
   const loadResources = useCallback(async () => {
     try {
@@ -117,9 +122,24 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
     return () => clearInterval(interval);
   }, [activeTaskId]);
 
-  const startReview = async () => {
+  const handleStartCheck = async () => {
     if (!selectedDocId || (selectedGroupIds.length === 0 && selectedCompDocIds.length === 0)) return;
     setError(null);
+    setCalculatingCost(true);
+
+    try {
+      const costData = await api.getReviewCost(selectedGroupIds, selectedCompDocIds);
+      setCostEstimate(costData);
+      setShowCostModal(true);
+    } catch (e: any) {
+      setError("计算审查费用失败: " + e.message);
+    } finally {
+      setCalculatingCost(false);
+    }
+  };
+
+  const confirmStartReview = async () => {
+    setShowCostModal(false);
     setLoading(true);
     setTaskDetails(null);
 
@@ -205,7 +225,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
   if (restoringTask) {
     return (
       <div className="max-w-2xl mx-auto mt-16 text-center bg-white p-8 rounded-xl shadow-lg border border-slate-200">
-        <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-indigo-600" />
+        <Loader className="w-12 h-12 mx-auto mb-4 animate-spin text-indigo-600" />
         <h2 className="text-xl font-bold text-slate-900 mb-2">正在检查审查任务...</h2>
       </div>
     );
@@ -280,7 +300,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="bg-emerald-50 rounded-lg p-4 text-center">
               <div className="flex items-center justify-center gap-1 text-emerald-600 mb-1">
-                <CheckCircle2 className="w-5 h-5" />
+                <CheckCircle className="w-5 h-5" />
                 <span className="text-2xl font-bold">{stats.PASS}</span>
               </div>
               <span className="text-xs text-emerald-600">通过</span>
@@ -305,7 +325,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
         {/* Loading indicator */}
         {!isCompleted && !isFailed && !isCancelled && (
           <div className="flex justify-center items-center text-slate-400 text-sm py-4">
-            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+            <Loader className="w-5 h-5 mr-2 animate-spin" />
             正在审查中，每条规则约需10-30秒...
           </div>
         )}
@@ -331,7 +351,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
                 onClick={onGoToReports}
                 className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm flex items-center gap-2"
               >
-                <BarChart3 className="w-4 h-4" />
+                <BarChart2 className="w-4 h-4" />
                 查看详细报告
               </button>
             )}
@@ -353,7 +373,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
       <div className="max-w-7xl mx-auto px-4 space-y-8 pb-12">
         <div className="w-full">
             <div className="max-w-2xl mx-auto mt-16 text-center bg-white p-8 rounded-xl shadow-lg border border-slate-200">
-                <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-indigo-600" />
+                <Loader className="w-12 h-12 mx-auto mb-4 animate-spin text-indigo-600" />
                 <h2 className="text-xl font-bold text-slate-900 mb-2">正在加载审查任务...</h2>
             </div>
         </div>
@@ -455,7 +475,7 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
         {/* Comparison Document Selection */}
         <div className={`p-6 rounded-xl border-2 transition-all ${selectedCompDocIds.length > 0 ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700"><FileDiff className="w-6 h-6" /></div>
+            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700"><Files className="w-6 h-6" /></div>
             <h3 className="font-semibold text-lg text-slate-800">3. 选择对比文件 (可选)</h3>
           </div>
 
@@ -490,14 +510,14 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
 
       <div className="flex justify-center pt-6">
         <button
-          onClick={startReview}
-          disabled={!selectedDocId || (selectedGroupIds.length === 0 && selectedCompDocIds.length === 0) || loading}
+          onClick={handleStartCheck}
+          disabled={!selectedDocId || (selectedGroupIds.length === 0 && selectedCompDocIds.length === 0) || loading || calculatingCost}
           className="flex items-center px-8 py-4 bg-indigo-600 text-white text-lg font-bold rounded-xl hover:bg-indigo-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
         >
-          {loading ? (
+          {loading || calculatingCost ? (
             <>
-              <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-              启动中...
+              <Loader className="w-5 h-5 mr-3 animate-spin" />
+              {calculatingCost ? '计算费用...' : '启动中...'}
             </>
           ) : (
             <>
@@ -511,6 +531,58 @@ export const ReviewEngine: React.FC<ReviewEngineProps> = ({ onGoToReports }) => 
       {error && (
         <div className="text-center text-red-600 bg-red-50 p-3 rounded-lg mt-4">
           {error}
+        </div>
+      )}
+
+      {/* Cost Confirmation Modal */}
+      {showCostModal && costEstimate && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+              <div className="p-3 bg-indigo-100 rounded-full text-indigo-600">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">确认审查费用</h3>
+                <p className="text-sm text-slate-500">本次操作将消耗您的账户积分</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-lg p-4 mb-6 space-y-3">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600">常规规则检查:</span>
+                <span className="font-medium text-slate-900">{costEstimate.breakdown.rule_checks} 项</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600">对比文件检查:</span>
+                <span className="font-medium text-slate-900">{costEstimate.breakdown.comparison_checks} 项</span>
+              </div>
+              <div className="h-px bg-slate-200 my-2" />
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-slate-700">总计消耗:</span>
+                <span className="text-xl font-bold text-indigo-600">{costEstimate.total_cost} 积分</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-6 text-center">
+              点击确认后将立即扣除积分并开始任务。<br />若任务失败，积分将自动通过系统日志审计退回。
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => setShowCostModal(false)}
+                className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmStartReview}
+                className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition-colors"
+              >
+                确认并开始
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

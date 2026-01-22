@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { Loader2, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
+import { Loader, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
 
 interface ReviewTaskListProps {
   onSelectTask: (taskId: string) => void;
@@ -14,7 +14,7 @@ export const ReviewTaskList: React.FC<ReviewTaskListProps> = ({ onSelectTask, ac
   const fetchTasks = async () => {
     try {
       const data = await api.getReviewTasks();
-      setTasks(data);
+      setTasks(data || []);
     } catch (error) {
       console.error("Failed to fetch tasks", error);
     } finally {
@@ -28,8 +28,8 @@ export const ReviewTaskList: React.FC<ReviewTaskListProps> = ({ onSelectTask, ac
     return () => clearInterval(interval);
   }, []);
 
-  if (loading && tasks.length === 0) {
-    return <div className="p-4 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto"/></div>;
+  if (loading && (!tasks || tasks.length === 0)) {
+    return <div className="p-4 text-center"><Loader className="w-6 h-6 animate-spin mx-auto"/></div>;
   }
 
   return (
@@ -38,12 +38,12 @@ export const ReviewTaskList: React.FC<ReviewTaskListProps> = ({ onSelectTask, ac
         <h3 className="font-semibold text-slate-800">Review Tasks History</h3>
       </div>
       <div className="max-h-[400px] overflow-y-auto">
-        {tasks.length === 0 ? (
+        {(!tasks || tasks.length === 0) ? (
           <div className="p-8 text-center text-slate-500">No review tasks found.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {tasks.map((task) => (
-              <div 
+              <div
                 key={task.id}
                 onClick={() => onSelectTask(task.id)}
                 className={`p-4 cursor-pointer hover:bg-slate-50 transition-colors ${activeTaskId === task.id ? 'bg-indigo-50 hover:bg-indigo-100' : ''}`}
@@ -53,9 +53,9 @@ export const ReviewTaskList: React.FC<ReviewTaskListProps> = ({ onSelectTask, ac
                     {task.document_name}
                   </div>
                   <div className="flex-shrink-0">
-                    {task.status === 'COMPLETED' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                    {task.status === 'COMPLETED' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
                     {task.status === 'FAILED' && <XCircle className="w-4 h-4 text-red-500" />}
-                    {(task.status === 'PROCESSING' || task.status === 'PENDING') && <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />}
+                    {(task.status === 'PROCESSING' || task.status === 'PENDING') && <Loader className="w-4 h-4 text-indigo-500 animate-spin" />}
                     {task.status === 'CANCELLED' && <AlertCircle className="w-4 h-4 text-slate-400" />}
                   </div>
                 </div>

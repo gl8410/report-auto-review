@@ -11,6 +11,8 @@ from backend.models.comparison import ComparisonDocument, ComparisonResult
 from backend.schemas.review import ReviewStartRequest, ResultUpdateRequest
 from backend.integrations.llm_client import generate_review_queries, compare_rule_with_context, compare_documents_chunk_wise
 from backend.integrations.vector_store import search_document_chunks
+from backend.core.config import settings
+from backend.services.credit_service import CreditService
 
 async def execute_review_for_rule(
     rule: Dict[str, Any],
@@ -101,6 +103,23 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
         if not doc:
             task.status = TaskStatus.FAILED.value
             task.error_message = "Document not found"
+            
+            # Refund logic if doc not found (should be rare)
+            if task.credits_charged > 0:
+                try:
+                    await CreditService.refund_credits(
+                        user_id=owner_id,
+                        amount=task.credits_charged,
+                        app_id=settings.APP_ID,
+                        feature=settings.FEATURE_REVIEW_REFUND,
+                        metadata={
+                            "task_id": task_id,
+                            "reason": "Document not found in background task"
+                        }
+                    )
+                except Exception as e:
+                    print(f"Failed to refund credits for task {task_id}: {e}")
+            
             session.commit()
             return
 
@@ -111,6 +130,28 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
             if r:
                 rules.append(r)
         
+        # Check if task is already cancelled
+        if task.status == TaskStatus.CANCELLED.value:
+            print(f"[Review {task_id}] Review cancelled before processing started.")
+            
+            # Refund if cancelled in PENDING
+            if task.credits_charged > 0:
+                try:
+                    await CreditService.refund_credits(
+                        user_id=owner_id,
+                        amount=task.credits_charged,
+                        app_id=settings.APP_ID,
+                        feature=settings.FEATURE_REVIEW_REFUND,
+                        metadata={
+                            "task_id": task_id,
+                            "reason": "Task cancelled before processing"
+                        }
+                    )
+                except Exception as e:
+                    print(f"Failed to refund credits for task {task_id}: {e}")
+            
+            return
+
         # Update task to PROCESSING
         task.status = TaskStatus.PROCESSING.value
         task.start_time = datetime.now(timezone.utc)
@@ -261,10 +302,18 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
 
 class ReviewService:
     @staticmethod
+    def calculate_cost(session: Session, rule_group_ids: List[str]) -> int:
+        """Calculate the cost (total rules) for given groups."""
+        if not rule_group_ids:
+            return 0
+        rules = get_all_rules_from_groups(session, rule_group_ids)
+        return len(rules)
+
+    @staticmethod
     def get_reviews(session: Session, owner_id: Optional[str] = None) -> List[Dict]:
         """Get all review tasks with document and rule group info."""
-        # Query builder
-        query = select(ReviewTask)
+        # Query builder with eager loading
+        query = select(ReviewTask, Document, RuleGroup).join(Document, isouter=True).join(RuleGroup, ReviewTask.rule_group_id == RuleGroup.id, isouter=True)
         
         # Apply owner_id filter if provided
         if owner_id:
@@ -273,19 +322,17 @@ class ReviewService:
         # Order by created_at desc
         query = query.order_by(ReviewTask.created_at.desc())
         
-        tasks = session.exec(query).all()
+        results = session.exec(query).all()
 
         # Enrich with document and rule group names
         enriched = []
-        for task in tasks:
-            doc = session.get(Document, task.document_id)
+        for task, doc, group in results:
             # Fetch group name if available, or use stored names
             group_name = "Unknown"
             if task.rule_group_names:
                 group_name = task.rule_group_names
-            elif task.rule_group_id:
-                group = session.get(RuleGroup, task.rule_group_id)
-                group_name = group.name if group else "Unknown"
+            elif group:
+                group_name = group.name
                 
             enriched.append({
                 "id": task.id,
@@ -340,6 +387,29 @@ class ReviewService:
                 if g:
                     group_names.append(g.name)
         
+        # Calculate cost
+        cost = len(rules)
+        
+        # Deduct credits
+        if settings.ENABLE_CREDIT_SYSTEM and owner_id:
+            deduct_result = await CreditService.deduct_credits(
+                user_id=owner_id,
+                cost=cost,
+                app_id=settings.APP_ID,
+                feature=settings.FEATURE_REVIEW_TASK,
+                metadata={
+                    "document_id": data.document_id,
+                    "rule_count": len(rules),
+                    "rule_group_ids": data.rule_group_ids
+                }
+            )
+            
+            if not deduct_result.get("success"):
+                raise HTTPException(
+                    status_code=402,
+                    detail=deduct_result.get("message", "Insufficient credits")
+                )
+        
         # Create task
         task = ReviewTask(
             document_id=data.document_id,
@@ -348,7 +418,8 @@ class ReviewService:
             comparison_document_ids=",".join(data.comparison_document_ids) if data.comparison_document_ids else None,
             status=TaskStatus.PENDING.value,
             progress=0,
-            owner_id=owner_id
+            owner_id=owner_id,
+            credits_charged=cost if (settings.ENABLE_CREDIT_SYSTEM and owner_id) else 0
         )
         session.add(task)
         session.commit()
@@ -389,26 +460,30 @@ class ReviewService:
             group = session.get(RuleGroup, task.rule_group_id)
             group_name = group.name if group else "Unknown"
 
-        # Count results by type
+        # Count results by type (optimized count query)
+        # Using separate queries for counts might be faster if we don't need the objects
+        # But here we iterate to count. Let's do it in Python as before but maybe just select columns?
+        # Actually fetching all result items is okay if N is small (< 1000).
+        # But for large tasks, we should user SQL COUNT + GROUP BY.
+        # For now, let's keep it simple as stats are derived from all items.
+        
         results = session.exec(
-            select(ReviewResultItem).where(ReviewResultItem.task_id == task_id)
+            select(ReviewResultItem.result_code).where(ReviewResultItem.task_id == task_id)
         ).all()
 
         stats = {"PASS": 0, "REJECT": 0, "MANUAL_CHECK": 0}
-        for r in results:
-            if r.result_code in stats:
-                stats[r.result_code] += 1
+        for code in results:
+            if code in stats:
+                stats[code] += 1
                 
-        # Get comparison results
-        comp_results = session.exec(
-            select(ComparisonResult).where(ComparisonResult.task_id == task_id)
-        ).all()
+        # Get comparison results joined with document
+        comp_results_query = select(ComparisonResult, ComparisonDocument).join(ComparisonDocument, isouter=True).where(ComparisonResult.task_id == task_id)
+        comp_results = session.exec(comp_results_query).all()
         
         comp_stats = []
-        for cr in comp_results:
-            comp_doc = session.get(ComparisonDocument, cr.comparison_document_id)
+        for cr, cd in comp_results:
             comp_stats.append({
-                "document_name": comp_doc.filename if comp_doc else "Unknown",
+                "document_name": cd.filename if cd else "Unknown",
                 "conflict_score": cr.conflict_score,
                 "summary": cr.summary
             })
@@ -437,14 +512,13 @@ class ReviewService:
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        results = session.exec(
-            select(ReviewResultItem).where(ReviewResultItem.task_id == task_id)
-        ).all()
+        # Join ReviewResultItem with Rule
+        query = select(ReviewResultItem, Rule).join(Rule, isouter=True).where(ReviewResultItem.task_id == task_id)
+        results = session.exec(query).all()
 
         # Enrich with rule info
         enriched = []
-        for result in results:
-            rule = session.get(Rule, result.rule_id)
+        for result, rule in results:
             enriched.append({
                 "id": result.id,
                 "task_id": result.task_id,
@@ -491,7 +565,7 @@ class ReviewService:
         return {"message": f"Review task and results deleted"}
 
     @staticmethod
-    def cancel_review_task(session: Session, task_id: str) -> Dict:
+    async def cancel_review_task(session: Session, task_id: str) -> Dict:
         """Cancel a running review task."""
         task = session.get(ReviewTask, task_id)
         if not task:
@@ -500,8 +574,10 @@ class ReviewService:
         if task.status not in [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]:
             raise HTTPException(status_code=400, detail=f"Cannot cancel task in {task.status} state")
 
+        previous_status = task.status
         task.status = TaskStatus.CANCELLED.value
         task.end_time = datetime.now(timezone.utc)
+        
         session.add(task)
         session.commit()
 

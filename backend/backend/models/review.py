@@ -34,6 +34,7 @@ class ReviewTask(SQLModel, table=True):
     owner_id: Optional[str] = Field(default=None, index=True)
     error_message: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    credits_charged: int = Field(default=0)
 
 class ReviewResultItem(SQLModel, table=True):
     """审查结果明细表"""

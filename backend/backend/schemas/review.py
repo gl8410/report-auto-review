@@ -7,6 +7,10 @@ class ReviewStartRequest(BaseModel):
     rule_group_ids: Optional[List[str]] = None
     comparison_document_ids: Optional[List[str]] = None
 
+class ReviewCostRequest(BaseModel):
+    rule_group_ids: Optional[List[str]] = None
+    comparison_document_ids: Optional[List[str]] = None
+
 class ReviewResultResponse(BaseModel):
     id: str
     task_id: str

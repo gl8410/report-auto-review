@@ -3,6 +3,7 @@ Pytest configuration and fixtures for ADS System tests.
 Uses an in-memory SQLite database for isolated testing.
 """
 import pytest
+import uuid
 from typing import Generator
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine
@@ -14,8 +15,9 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.main import app
-from backend.api.deps import get_session
+from backend.api.deps import get_session, get_current_user
 from backend.models import * # Import all models to register with SQLModel
+from backend.models.user import Profile
 
 # Create in-memory SQLite engine for testing
 TEST_DATABASE_URL = "sqlite://"
@@ -47,8 +49,17 @@ def client_fixture(engine) -> Generator[TestClient, None, None]:
     def get_session_override():
         with Session(engine) as session:
             yield session
+            
+    def get_current_user_override() -> Profile:
+        return Profile(
+            id=uuid.UUID("12345678-1234-5678-1234-567812345678"),
+            email="test@example.com",
+            subscription_credits=1000,
+            topup_credits=0
+        )
     
     app.dependency_overrides[get_session] = get_session_override
+    app.dependency_overrides[get_current_user] = get_current_user_override
     
     with TestClient(app) as client:
         yield client

@@ -156,7 +156,7 @@ async def process_document_background_from_file(doc_id: str, file_path: str, fil
             })
             session.add(doc)
             session.commit()
-
+            
             print(f"Successfully processed document {filename} with {chunk_count} chunks")
 
         except Exception as e:
@@ -189,7 +189,8 @@ class DocumentService:
     async def upload_document(
         session: Session,
         file: UploadFile,
-        background_tasks
+        background_tasks,
+        owner_id: Optional[str] = None
     ) -> Document:
         """Upload a document for review (supports .pdf, .docx, .doc, .ppt, .pptx)."""
         filename = file.filename or "unknown"
@@ -256,7 +257,8 @@ class DocumentService:
             id=doc_id,
             filename=filename,
             storage_path=storage_path,
-            status=DocumentStatus.UPLOADING.value
+            status=DocumentStatus.UPLOADING.value,
+            owner_id=str(owner_id) if owner_id else None
         )
         session.add(doc)
         session.commit()

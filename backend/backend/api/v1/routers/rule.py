@@ -1,6 +1,7 @@
 import io
 import csv
-from typing import List, Optional
+from collections import defaultdict
+from typing import List, Optional, Dict
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -16,6 +17,7 @@ from backend.schemas.rule import (
 )
 from backend.integrations.llm_client import parse_rules_from_text
 from backend.services.document_service import extract_text_from_file
+from backend.core.config import settings
 
 router = APIRouter()
 
@@ -25,27 +27,22 @@ VALID_RISK_LEVELS = ["低风险", "中风险", "高风险"]
 
 # ============== Rule Group Endpoints ==============
 
-def build_group_tree_response(group: RuleGroup, user_id: str) -> Optional[RuleGroupResponse]:
+def build_group_tree_response_in_memory(
+    group: RuleGroup,
+    children_map: Dict[str, List[RuleGroup]]
+) -> RuleGroupResponse:
     """
-    Recursively build RuleGroupResponse, filtering out children that are not visible to the user.
+    Recursively build RuleGroupResponse from pre-fetched data.
     """
-    # 1. Check if current group is visible (Double check, although caller should have checked root)
-    is_owner = str(user_id) == group.owner_id
-    is_legacy = group.owner_id is None
-    is_public = group.type == "public"
-    
-    if not (is_owner or is_legacy or is_public):
-        return None
-        
-    # 2. Process children recursively
-    filtered_children = []
-    if group.children:
-        for child in group.children:
-             child_resp = build_group_tree_response(child, user_id)
-             if child_resp:
-                 filtered_children.append(child_resp)
+    # Build children recursively from map
+    children_dtos = []
+    if group.id in children_map:
+        # Sort children by creation time (newest first)
+        sorted_children = sorted(children_map[group.id], key=lambda x: x.created_at, reverse=True)
+        for child in sorted_children:
+            children_dtos.append(build_group_tree_response_in_memory(child, children_map))
 
-    # 3. Construct Response Model
+    # Construct Response Model
     return RuleGroupResponse(
         id=group.id,
         name=group.name,
@@ -53,7 +50,7 @@ def build_group_tree_response(group: RuleGroup, user_id: str) -> Optional[RuleGr
         type=group.type,
         parent_id=group.parent_id,
         created_at=group.created_at,
-        children=filtered_children
+        children=children_dtos
     )
 
 @router.get("/rule-groups", response_model=List[RuleGroupResponse])
@@ -62,26 +59,37 @@ def get_rule_groups(
     current_user: Profile = Depends(get_current_user)
 ):
     """Get all rule groups (hierarchical tree, top-level only), ensuring security visibility recursively."""
-    # Only select top-level groups, filtered by visibility
-    query = select(RuleGroup).where(RuleGroup.parent_id == None)
-    
-    # Filter roots: (owner is me) OR (type is public) OR (owner is NULL/Legacy)
-    query = query.where(
+    # 1. Fetch ALL groups visible to the user in a single query
+    query = select(RuleGroup).where(
         or_(
             RuleGroup.owner_id == str(current_user.id),
             RuleGroup.type == "public",
             RuleGroup.owner_id == None
         )
     )
+    all_groups = session.exec(query).all()
+
+    # 2. Build adjacency list (children map) and find roots
+    children_map = defaultdict(list)
+    root_groups = []
     
-    root_groups = session.exec(query.order_by(RuleGroup.created_at.desc())).all()
+    # Create a set of accessible IDs for O(1) lookup
+    accessible_ids = {g.id for g in all_groups}
     
-    # Build tree with security filtering
+    for group in all_groups:
+        if group.parent_id and group.parent_id in accessible_ids:
+            children_map[group.parent_id].append(group)
+        else:
+            # It's a root if it has no parent OR its parent is not accessible
+            root_groups.append(group)
+            
+    # 3. Sort roots
+    root_groups.sort(key=lambda x: x.created_at, reverse=True)
+
+    # 4. Build response tree
     response_groups = []
     for group in root_groups:
-        resp = build_group_tree_response(group, str(current_user.id))
-        if resp:
-            response_groups.append(resp)
+        response_groups.append(build_group_tree_response_in_memory(group, children_map))
             
     return response_groups
 
@@ -161,46 +169,58 @@ def update_rule_group(
     session.refresh(group)
     return group
 
-def delete_group_recursive(session: Session, group: RuleGroup):
-    """Recursively delete a group and its children."""
-    print(f"Deleting group: {group.name} ({group.id})")
-    # 1. Fetch and delete children
-    children = session.exec(select(RuleGroup).where(RuleGroup.parent_id == group.id)).all()
-    for child in children:
-        delete_group_recursive(session, child)
+from sqlmodel import delete
 
-    # 2. Delete associated Review Tasks and their Results
-    tasks = session.exec(select(ReviewTask).where(ReviewTask.rule_group_id == group.id)).all()
-    print(f"Found {len(tasks)} tasks for group {group.id}")
-    for task in tasks:
-        print(f"Deleting task {task.id}")
-        # Delete results for this task
-        results = session.exec(select(ReviewResultItem).where(ReviewResultItem.task_id == task.id)).all()
-        print(f"  Deleting {len(results)} review results")
-        for res in results:
-            session.delete(res)
-            
-        # Delete comparison results for this task
-        try:
-            comp_results = session.exec(select(ComparisonResult).where(ComparisonResult.task_id == task.id)).all()
-            print(f"  Deleting {len(comp_results)} comparison results")
-            for cr in comp_results:
-                session.delete(cr)
-        except Exception as e:
-            print(f"  Error deleting comparison results: {e}")
-            # Continue deleting task even if comparison results deletion fails
-            
-        # Delete the task itself
-        session.delete(task)
+def delete_group_recursive(session: Session, group: RuleGroup):
+    """Recursively delete a group and its children using bulk operations."""
+    print(f"Deleting group tree starting at: {group.name} ({group.id})")
     
-    # 3. Delete all rules in this group
-    rules = session.exec(select(Rule).where(Rule.group_id == group.id)).all()
-    print(f"Deleting {len(rules)} rules for group {group.id}")
-    for rule in rules:
-        session.delete(rule)
+    # 1. Get all descendant group IDs (plus the current group)
+    all_group_ids = get_child_group_ids(session, group.id)
+    # get_child_group_ids returns descendants including root? No, check implementation.
+    # Implementation says: ids = [root_group_id], then bfs. So yes.
+    
+    print(f"Found {len(all_group_ids)} groups to delete.")
+    
+    if not all_group_ids:
+        return
+
+    # 2. Find all tasks associated with these groups
+    # We need to chunk this if there are too many groups (SQLite limit is 999 vars)
+    # But usually < 1000 groups in a deletion is safe. If not, we should loop.
+    # For robust production code, chunking is better.
+    
+    chunk_size = 500
+    for i in range(0, len(all_group_ids), chunk_size):
+        chunk = all_group_ids[i:i + chunk_size]
         
-    # 4. Delete the group
-    session.delete(group)
+        # 2.1 Delete Rules (Bulk)
+        # Using sqlmodel delete statement
+        session.exec(delete(Rule).where(Rule.group_id.in_(chunk)))
+        
+        # 2.2 Find Task IDs to delete results
+        tasks = session.exec(select(ReviewTask.id).where(ReviewTask.rule_group_id.in_(chunk))).all()
+        
+        if tasks:
+            task_ids = list(tasks)
+            # Delete Review Results
+            for k in range(0, len(task_ids), chunk_size):
+                t_chunk = task_ids[k:k+chunk_size]
+                # ReviewResultItems
+                session.exec(delete(ReviewResultItem).where(ReviewResultItem.task_id.in_(t_chunk)))
+                # ComparisonResults
+                try:
+                     session.exec(delete(ComparisonResult).where(ComparisonResult.task_id.in_(t_chunk)))
+                except Exception as e:
+                     print(f"Error deleting comparison results: {e}")
+
+            # Delete Tasks
+            session.exec(delete(ReviewTask).where(ReviewTask.id.in_(task_ids)))
+
+        # 2.3 Delete Groups
+        session.exec(delete(RuleGroup).where(RuleGroup.id.in_(chunk)))
+        
+    print(f"Bulk deletion completed.")
 
 @router.delete("/rule-groups/{group_id}")
 def delete_rule_group(
@@ -223,18 +243,36 @@ def delete_rule_group(
         session.commit()
         print("Deletion successful")
         return {"message": "Rule group and all sub-groups deleted"}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error in delete_rule_group: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_child_group_ids(session: Session, group_id: str) -> List[str]:
-    """Recursively get all child group IDs."""
-    ids = [group_id]
-    children = session.exec(select(RuleGroup).where(RuleGroup.parent_id == group_id)).all()
-    for child in children:
-        ids.extend(get_child_group_ids(session, child.id))
+def get_child_group_ids(session: Session, root_group_id: str) -> List[str]:
+    """Recursively get all child group IDs using in-memory traversal to avoid N+1 queries."""
+    # Fetch all parent-child relationships, selecting ONLY id and parent_id
+    results = session.exec(select(RuleGroup.id, RuleGroup.parent_id)).all()
+    
+    # Build adjacency list
+    children_map = defaultdict(list)
+    for g_id, p_id in results:
+        if p_id:
+            children_map[p_id].append(g_id)
+            
+    # BFS to finding all descendants
+    ids = [root_group_id]
+    queue = [root_group_id]
+    
+    while queue:
+        current_id = queue.pop(0)
+        if current_id in children_map:
+            children = children_map[current_id]
+            ids.extend(children)
+            queue.extend(children)
+            
     return ids
 
 # ============== Rule Endpoints ==============
@@ -250,7 +288,7 @@ def get_rules(group_id: str, recursive: bool = False, session: Session = Depends
     return rules
 
 @router.post("/rule-groups/{group_id}/rules", response_model=RuleResponse)
-def create_rule(group_id: str, data: RuleCreate, session: Session = Depends(get_session)):
+def create_rule(group_id: str, data: RuleCreate, session: Session = Depends(get_session), current_user: Profile = Depends(get_current_user)):
     """Create a new rule in a group."""
     # Verify group exists
     group = session.get(RuleGroup, group_id)
@@ -315,7 +353,7 @@ def delete_rule(rule_id: str, session: Session = Depends(get_session)):
 
 # ============== File Upload & LLM Parsing ==============
 
-async def process_uploaded_rules(group_id: str, content: str, filename: str, session: Session) -> int:
+async def process_uploaded_rules(group_id: str, content: str, filename: str, session: Session, current_user_id: str) -> int:
     """Background task to parse rules from uploaded file using LLM."""
     try:
         parsed = await parse_rules_from_text(content, filename)
@@ -345,7 +383,8 @@ async def process_uploaded_rules(group_id: str, content: str, filename: str, ses
 async def upload_rules_file(
     group_id: str,
     file: UploadFile = File(...),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: Profile = Depends(get_current_user)
 ):
     """Upload a file (txt, md, pdf, docx) and parse rules using LLM."""
     # Verify group exists
@@ -368,7 +407,7 @@ async def upload_rules_file(
         text_content = await extract_text_from_file(content, filename)
 
         # Process rules with LLM
-        rules_count = await process_uploaded_rules(group_id, text_content, filename, session)
+        rules_count = await process_uploaded_rules(group_id, text_content, filename, session, str(current_user.id))
 
         return {"message": f"成功从 '{filename}' 解析并导入 {rules_count} 条规则", "group_id": group_id, "rules_count": rules_count}
     except Exception as e:
@@ -428,7 +467,8 @@ def export_rules_csv(group_id: str, session: Session = Depends(get_session)):
 async def import_rules_csv(
     group_id: str,
     file: UploadFile = File(...),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: Profile = Depends(get_current_user)
 ):
     """Import rules from CSV file."""
     group = session.get(RuleGroup, group_id)

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # LLM
     API_KEY: Optional[str] = None
     LLM_URL: str = "https://api.siliconflow.cn/v1/chat/completions"
-    LLM_MODEL: str = "Pro/deepseek-ai/DeepSeek-V3.1-Terminus"
+    LLM_MODEL: str = "deepseek-ai/DeepSeek-V3.2"
     
     # Embedding
     EMBEDDING_URL: str = "https://api.siliconflow.cn/v1/embeddings"
@@ -29,12 +29,21 @@ class Settings(BaseSettings):
     # Supabase
     SUPABASE_URL: Optional[str] = None
     SUPABASE_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    # Credit System Configuration
+    APP_ID: str = "report_review_lite"
+    FEATURE_REVIEW_TASK: str = "review_task"
+    FEATURE_REVIEW_REFUND: str = "review_task_refund"
+    ENABLE_CREDIT_SYSTEM: bool = True
 
     # Storage
     UPLOADS_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
     
     model_config = SettingsConfigDict(
-        env_file=os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env'),
+        env_file=(
+            os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env'),
+            os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+        ),
         env_ignore_empty=True,
         extra="ignore"
     )

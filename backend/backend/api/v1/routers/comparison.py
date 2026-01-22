@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from sqlmodel import Session
 from backend.api.deps import get_session
 from backend.models.comparison import ComparisonDocument, ComparisonResult
+from backend.schemas.comparison import ComparisonResultRead
 from backend.services.comparison_service import ComparisonService
 import os
 
@@ -88,7 +89,7 @@ async def download_comparison_original(doc_id: str, session: Session = Depends(g
         filename=doc.filename
     )
 
-@router.get("/reviews/{task_id}/comparison-results", response_model=List[ComparisonResult])
+@router.get("/reviews/{task_id}/comparison-results", response_model=List[ComparisonResultRead])
 def get_comparison_results(task_id: str, session: Session = Depends(get_session)):
     """Get comparison results for a review task."""
     return ComparisonService.get_results_by_task(session, task_id)

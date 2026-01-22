@@ -2,10 +2,11 @@ from typing import List
 from fastapi import APIRouter, Depends, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 from sqlmodel import Session
-from backend.api.deps import get_session
+from backend.api.deps import get_session, get_current_user
 from backend.models.document import Document
 from backend.models.chunk import DocumentChunk
 from backend.services.document_service import DocumentService
+from backend.models.user import Profile
 import os
 
 router = APIRouter()
@@ -32,10 +33,11 @@ def get_document_chunks(doc_id: str, session: Session = Depends(get_session)):
 async def upload_document(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: Profile = Depends(get_current_user)
 ):
     """Upload a document for review (supports .pdf, .docx, .doc)."""
-    return await DocumentService.upload_document(session, file, background_tasks)
+    return await DocumentService.upload_document(session, file, background_tasks, owner_id=str(current_user.id))
 
 @router.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str, session: Session = Depends(get_session)):

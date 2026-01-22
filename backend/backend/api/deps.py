@@ -56,26 +56,27 @@ def get_current_user(
 
     # Fetch User Profile from Supabase directly via REST API (Foolproof Auth)
     try:
-        # Use httpx to make a request with the user's token to ensure RLS context
-        # Supabase Python client auth state can be tricky, raw HTTP is safer here.
+        # User auth verified above. fetch/create profile using Service Role Key to bypass RLS recursion/permissions.
+        # This is safe because we've already authenticated the user via auth.get_user(token)
+        anon_key = settings.SUPABASE_KEY
+        # service_key = settings.SUPABASE_SERVICE_ROLE_KEY or settings.SUPABASE_KEY
+        
         headers = {
-            "apikey": settings.SUPABASE_KEY,
+            "apikey": anon_key,
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Prefer": "return=representation"
         }
         
         url = f"{settings.SUPABASE_URL}/rest/v1/profiles"
-        params = {"id": f"eq.{user.id}", "select": "*"}
+        params = {"select": "*", "id": f"eq.{user.id}"}
         
         with httpx.Client() as client:
             resp = client.get(url, headers=headers, params=params)
             
         if resp.status_code != 200:
-             # If RLS denies, it might return 200 with empty list, or 401/403
-             # If API key wrong: 401
+             # 如果 RLS 没配置好，这里可能返回空数组 [] (status 200)，或者 401/403
              print(f"DEBUG: Supabase API Error {resp.status_code}: {resp.text}")
-             # Raise exception to trigger the fallback in the except block
              raise Exception(f"Supabase API Error {resp.status_code}: {resp.text}")
 
         data = resp.json()
@@ -86,7 +87,7 @@ def get_current_user(
             new_profile = {
                 "id": user.id,
                 "email": user.email,
-                "subscription_credits": 10,
+                "subscription_credits": 1100,
                 "topup_credits": 0
             }
             with httpx.Client() as client:
@@ -105,8 +106,8 @@ def get_current_user(
         profile = Profile(
             id=uuid.UUID(str(profile_data['id'])),
             email=str(profile_data.get('email', '')) if profile_data.get('email') else None,
-            subscription_credits=int(profile_data.get('subscription_credits', 0)),
-            topup_credits=int(profile_data.get('topup_credits', 0))
+            subscription_credits=int(profile_data.get('subscription_credits') or 0),
+            topup_credits=int(profile_data.get('topup_credits') or 0)
         )
         return profile
         

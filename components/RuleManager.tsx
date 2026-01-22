@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useResizable } from '../hooks/useResizable';
 import { Rule, RuleGroup } from '../types';
 import { Upload, Plus, Trash2, Loader2, FolderPlus, Folder, Edit2, Download, FileUp, X, Check, ChevronRight, ChevronDown, Globe, Lock } from 'lucide-react';
 import { api } from '../services/api';
+import GroupTreeItem from './GroupTreeItem';
+import RuleTableRow from './RuleTableRow';
 
 // Valid options for dropdowns
 const REVIEW_TYPES = ['内容完整性', '计算结果准确性', '禁止条款', '前后逻辑一致性', '措施遵从性', '计算正确性'];
@@ -25,8 +27,6 @@ export const RuleManager: React.FC = () => {
 
   // Edit states
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [editGroupName, setEditGroupName] = useState("");
-  const [editGroupType, setEditGroupType] = useState<"private" | "public">("private");
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [editRuleData, setEditRuleData] = useState<Partial<Rule>>({});
   const [showNewRuleForm, setShowNewRuleForm] = useState(false);
@@ -63,14 +63,14 @@ export const RuleManager: React.FC = () => {
     }
   }, [selectedGroup]);
 
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async () => {
     try {
       const data = await api.getRuleGroups();
       setGroups(data);
     } catch (e) {
       console.error("Failed to load groups. Is backend running?", e);
     }
-  };
+  }, []);
 
   const loadRules = async (groupId: string) => {
     setIsLoading(true);
@@ -83,30 +83,56 @@ export const RuleManager: React.FC = () => {
     setIsLoading(false);
   };
 
-  const toggleExpand = (groupId: string, e: React.MouseEvent) => {
+  const toggleExpand = useCallback((groupId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const newExpanded = new Set(expandedGroups);
-    if (newExpanded.has(groupId)) {
-      newExpanded.delete(groupId);
-    } else {
-      newExpanded.add(groupId);
-    }
-    setExpandedGroups(newExpanded);
-  };
-
-  // Helper to flatten tree for dropdown
-  const flattenGroups = (groups: RuleGroup[], depth = 0): { id: string, name: string, depth: number }[] => {
-    let result: { id: string, name: string, depth: number }[] = [];
-    for (const group of groups) {
-      result.push({ id: group.id, name: group.name, depth });
-      if (group.children) {
-        result = [...result, ...flattenGroups(group.children, depth + 1)];
+    setExpandedGroups(prev => {
+      const newExpanded = new Set(prev);
+      if (newExpanded.has(groupId)) {
+        newExpanded.delete(groupId);
+      } else {
+        newExpanded.add(groupId);
       }
-    }
-    return result;
-  };
+      return newExpanded;
+    });
+  }, []);
 
-  const flatGroupList = flattenGroups(groups);
+  const handleStartEdit = useCallback((group: RuleGroup) => {
+    setEditingGroupId(group.id);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingGroupId(null);
+  }, []);
+
+  const handleSaveEdit = useCallback((groupId: string) => {
+     // We need to use the current state values, but this callback is passed to children.
+     // If we use state directly here, we need to add them to dependency array,
+     // which invalidates the function on every keystroke.
+     // However, GroupTreeItem uses memo with custom comparator, so it ignores function prop changes
+     // for non-editing nodes.
+     // To strictly avoid stale closures if we were NOT utilizing the custom comparator, we'd use a ref.
+     // But with custom comparator, it's fine.
+     // Actually, we can just pass a wrapper that calls handleUpdateGroup
+     // But handleUpdateGroup is defined below and uses api.
+     // Let's just define handleUpdateGroup first or hoist it?
+     // handleUpdateGroup is defined at line 128.
+     // We will wire this up in the render.
+  }, []);
+
+  // Helper to flatten tree for dropdown (Memorized & Optimized)
+  const flatGroupList = useMemo(() => {
+    const result: { id: string, name: string, depth: number }[] = [];
+    const traverse = (items: RuleGroup[], depth: number) => {
+      for (const group of items) {
+        result.push({ id: group.id, name: group.name, depth });
+        if (group.children && group.children.length > 0) {
+          traverse(group.children, depth + 1);
+        }
+      }
+    };
+    traverse(groups, 0);
+    return result;
+  }, [groups]);
 
   // ============== Group Operations ==============
   const handleCreateGroup = async () => {
@@ -124,123 +150,36 @@ export const RuleManager: React.FC = () => {
     }
   };
 
-  const handleUpdateGroup = async (groupId: string, name: string, type: "private" | "public") => {
+  const handleUpdateGroup = useCallback(async (groupId: string, name: string, type: "private" | "public") => {
     if (!name.trim()) return;
     try {
       await api.updateRuleGroup(groupId, name, undefined, type);
       await loadGroups();
       
       // Update selected group if it was the one edited
-      if (selectedGroup?.id === groupId) {
-        setSelectedGroup(prev => prev ? { ...prev, name, type } : null);
-      }
+      setSelectedGroup(prev => (prev?.id === groupId ? { ...prev, name, type } : prev));
       
       setEditingGroupId(null);
-      setEditGroupName("");
       setIsEditingHeader(false);
     } catch (e: any) {
       alert(`Update failed: ${e.message}`);
     }
-  };
+  }, [loadGroups]);
 
-  const handleDeleteGroup = async (groupId: string) => {
+  const handleDeleteGroup = useCallback(async (groupId: string) => {
     if (!confirm("删除规则组将同时删除其所有子组及组内规则，确定吗？")) return;
     try {
       await api.deleteRuleGroup(groupId);
       await loadGroups();
-      if (selectedGroup?.id === groupId) {
-        setSelectedGroup(null);
-      }
+      
+      // Clear selection if deleted group was selected
+      setSelectedGroup(prev => (prev?.id === groupId ? null : prev));
     } catch (e: any) {
       alert(`Delete failed: ${e.message}`);
     }
-  };
+  }, [loadGroups]);
 
-  // Recursive Tree Item Component
-  const GroupTreeItem: React.FC<{ group: RuleGroup, depth?: number }> = ({ group, depth = 0 }) => {
-    const hasChildren = group.children && group.children.length > 0;
-    const isExpanded = expandedGroups.has(group.id);
-    const isSelected = selectedGroup?.id === group.id;
-    const isEditing = editingGroupId === group.id;
-
-    return (
-      <div className="select-none">
-        <div
-          onClick={() => !isEditing && setSelectedGroup(group)}
-          className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
-            }`}
-          style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        >
-          <div className="flex items-center gap-1 mr-1" onClick={(e) => hasChildren && toggleExpand(group.id, e)}>
-            {hasChildren ? (
-              isExpanded ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />
-            ) : (
-              <div className="w-3" />
-            )}
-          </div>
-
-          {isEditing ? (
-            <div className="flex items-center gap-1 flex-1" onClick={e => e.stopPropagation()}>
-              <input
-                className="flex-1 text-sm border rounded px-2 py-1 min-w-0"
-                value={editGroupName}
-                onChange={e => setEditGroupName(e.target.value)}
-                onClick={e => e.stopPropagation()}
-              />
-               <select
-                className="text-xs border rounded px-1 py-1 w-20"
-                value={editGroupType}
-                onChange={e => setEditGroupType(e.target.value as "private" | "public")}
-                onClick={e => e.stopPropagation()}
-              >
-                <option value="private">私有</option>
-                <option value="public">公开</option>
-              </select>
-              <button onClick={() => handleUpdateGroup(group.id, editGroupName, editGroupType)} className="p-1 text-green-600 hover:bg-green-50 rounded">
-                <Check className="w-3 h-3" />
-              </button>
-              <button onClick={() => setEditingGroupId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <Folder className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'fill-indigo-200' : ''}`} />
-                <span className="truncate text-sm font-medium">{group.name}</span>
-                {group.type === 'public' ? (
-                  <Globe className="w-3 h-3 text-slate-400" title="Public" />
-                ) : (
-                  <Lock className="w-3 h-3 text-slate-300" title="Private" />
-                )}
-              </div>
-              <div className="hidden group-hover:flex items-center gap-1 opacity-0 hover:opacity-100">
-                <button onClick={(e) => { e.stopPropagation(); handleDeleteGroup(group.id); }} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
-                  <Trash2 className="w-3 h-3" />
-                </button>
-                <button onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingGroupId(group.id);
-                  setEditGroupName(group.name);
-                  setEditGroupType(group.type || 'private');
-                }} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
-                  <Edit2 className="w-3 h-3" />
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        {hasChildren && isExpanded && (
-          <div>
-            {group.children!.map(child => (
-              <GroupTreeItem key={child.id} group={child} depth={depth + 1} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // Replaced with external GroupTreeItem component
 
   // ============== Rule Operations ==============
   const handleCreateRule = async () => {
@@ -320,7 +259,7 @@ export const RuleManager: React.FC = () => {
     }
   };
 
-  const startEditRule = (rule: Rule) => {
+  const startEditRule = useCallback((rule: Rule) => {
     setEditingRuleId(rule.id);
     setEditRuleData({
       clause_number: rule.clause_number,
@@ -329,7 +268,16 @@ export const RuleManager: React.FC = () => {
       review_type: rule.review_type,
       risk_level: rule.risk_level
     });
-  };
+  }, []);
+
+  const handleCancelEditRule = useCallback(() => {
+    setEditingRuleId(null);
+    setEditRuleData({});
+  }, []);
+
+  const handleEditRuleDataChange = useCallback((data: Partial<Rule>) => {
+    setEditRuleData(data);
+  }, []);
 
   const { widths, handleMouseDown } = useResizable({
     clause_number: 100,
@@ -407,7 +355,19 @@ export const RuleManager: React.FC = () => {
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {groups.map(g => (
-              <GroupTreeItem key={g.id} group={g} />
+              <GroupTreeItem
+                key={g.id}
+                group={g}
+                expandedGroups={expandedGroups}
+                selectedGroup={selectedGroup}
+                editingGroupId={editingGroupId}
+                onToggleExpand={toggleExpand}
+                onSelectGroup={setSelectedGroup}
+                onStartEdit={handleStartEdit}
+                onSaveEdit={handleUpdateGroup}
+                onCancelEdit={handleCancelEdit}
+                onDeleteGroup={handleDeleteGroup}
+              />
             ))}
             {groups.length === 0 && <div className="text-center text-xs text-slate-400 p-4">暂无规则组</div>}
           </div>
@@ -579,66 +539,18 @@ export const RuleManager: React.FC = () => {
                     )}
                     {/* Rule Rows */}
                     {rules.map((rule) => (
-                      <tr key={rule.id} className="hover:bg-slate-50 transition-colors group">
-                        {editingRuleId === rule.id ? (
-                          <>
-                            <td className="px-4 py-2">
-                              <input className="w-full text-sm border rounded px-2 py-1" value={editRuleData.clause_number || ''} onChange={e => setEditRuleData({ ...editRuleData, clause_number: e.target.value })} />
-                            </td>
-                            <td className="px-4 py-2">
-                              <input className="w-full text-sm border rounded px-2 py-1" value={editRuleData.standard_name || ''} onChange={e => setEditRuleData({ ...editRuleData, standard_name: e.target.value })} />
-                            </td>
-                            <td className="px-4 py-2">
-                              <textarea className="w-full text-sm border rounded px-2 py-1 min-h-[60px]" value={editRuleData.content || ''} onChange={e => setEditRuleData({ ...editRuleData, content: e.target.value })} />
-                            </td>
-                            <td className="px-4 py-2">
-                              <select className="w-full text-xs border rounded px-1 py-1" value={editRuleData.review_type || ''} onChange={e => setEditRuleData({ ...editRuleData, review_type: e.target.value })}>
-                                {REVIEW_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
-                            </td>
-                            <td className="px-4 py-2">
-                              <select className="w-full text-xs border rounded px-1 py-1" value={editRuleData.risk_level || ''} onChange={e => setEditRuleData({ ...editRuleData, risk_level: e.target.value })}>
-                                {RISK_LEVELS.map(i => <option key={i} value={i}>{i}</option>)}
-                              </select>
-                            </td>
-                            <td className="px-4 py-2">
-                              <div className="flex gap-1">
-                                <button onClick={() => handleUpdateRule(rule.id)} className="p-1 text-green-600 hover:bg-green-100 rounded"><Check className="w-4 h-4" /></button>
-                                <button onClick={() => setEditingRuleId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded"><X className="w-4 h-4" /></button>
-                              </div>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="px-4 py-3 align-top font-mono text-xs font-medium text-slate-600">{rule.clause_number}</td>
-                            <td className="px-4 py-3 align-top text-xs text-slate-500">{rule.standard_name || '-'}</td>
-                            <td className="px-4 py-3 align-top text-slate-700 leading-relaxed">{rule.content}</td>
-                            <td className="px-4 py-3 align-top">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                                {rule.review_type || '-'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 align-top">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border
-                                ${rule.risk_level === '高风险' ? 'bg-red-50 text-red-700 border-red-100' :
-                                  rule.risk_level === '中风险' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                                    'bg-slate-50 text-slate-600 border-slate-100'}`}>
-                                {rule.risk_level}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 align-top">
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => handleDeleteRule(rule.id)} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => startEditRule(rule)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </>
-                        )}
-                      </tr>
+                      <RuleTableRow
+                        key={rule.id}
+                        rule={rule}
+                        isEditing={editingRuleId === rule.id}
+                        editRuleData={editRuleData}
+                        widths={widths}
+                        onStartEdit={startEditRule}
+                        onCancelEdit={handleCancelEditRule}
+                        onSaveEdit={handleUpdateRule}
+                        onDeleteRule={handleDeleteRule}
+                        onEditChange={handleEditRuleDataChange}
+                      />
                     ))}
                   </tbody>
                 </table>

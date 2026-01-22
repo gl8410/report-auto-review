@@ -57,7 +57,7 @@ export const ReportViewer: React.FC = () => {
   const loadTasks = async () => {
     try {
       const data = await api.getReviewTasks();
-      setTasks(data.reverse());
+      setTasks(data || []);
     } catch (e) {
       console.error(e);
     }
@@ -514,33 +514,91 @@ export const ReportViewer: React.FC = () => {
                 <p className="text-sm mt-1">本次审查未选择对比文件，或未发现冲突内容。</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {comparisonResults.map(res => (
-                  <div key={res.id} className="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h4 className="font-semibold text-slate-800">对比文件冲突</h4>
-                        <p className="text-xs text-slate-500 mt-0.5">ID: {res.comparison_document_id.substring(0, 8)}...</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-1 bg-red-50 text-red-700 text-xs font-bold rounded border border-red-100">
-                          冲突度: {(res.conflict_score * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
+              <div className="space-y-6">
+                {comparisonResults.map(res => {
+                  let conflicts: any[] = [];
+                  try {
+                    conflicts = res.details ? JSON.parse(res.details) : [];
+                    // Ensure it is an array
+                    if (!Array.isArray(conflicts)) {
+                      conflicts = [];
+                    }
+                  } catch (e) {
+                    console.error('Failed to parse comparison details', e);
+                  }
 
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="bg-slate-50 p-3 rounded border border-slate-100">
-                        <div className="text-xs font-bold text-slate-500 uppercase mb-1">冲突摘要</div>
-                        <p className="text-sm text-slate-700">{res.summary || '无摘要'}</p>
+                  return (
+                    <div key={res.id} className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <div>
+                          <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+                            <span className="text-slate-500 text-sm font-normal">对比文件名称:</span>
+                            {res.document_name || res.comparison_document_id.substring(0, 8) + '...'}
+                          </h4>
+                          {res.summary && (
+                            <p className="text-sm text-slate-500 mt-1">{res.summary}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-3 py-1 text-xs font-bold rounded-full border ${res.conflict_score > 0.5 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                            冲突度: {(res.conflict_score * 100).toFixed(0)}%
+                          </span>
+                        </div>
                       </div>
-                      <div className="bg-slate-50 p-3 rounded border border-slate-100">
-                        <div className="text-xs font-bold text-slate-500 uppercase mb-1">详细说明</div>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{res.details ? JSON.stringify(JSON.parse(res.details), null, 2) : '无详情'}</p>
+
+                      <div className="p-6">
+                        {conflicts.length === 0 ? (
+                          <div className="text-center text-slate-400 py-4 italic">无详细冲突记录</div>
+                        ) : (
+                          <div className="space-y-6">
+                            {conflicts.map((conflict, idx) => (
+                              <div key={idx} className="relative pl-6 border-l-2 border-indigo-100">
+                                <span className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-indigo-50 border-2 border-indigo-200"></span>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  {/* Left Column: Evidence & Content */}
+                                  <div className="space-y-4">
+                                    <div>
+                                      <div className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center">
+                                        <FileText className="w-3 h-3 mr-1" /> 原文内容 (Target Content)
+                                      </div>
+                                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-800 leading-relaxed font-mono">
+                                        {conflict.target_content || 'N/A'}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center">
+                                        <FileText className="w-3 h-3 mr-1" /> 对比文件内容 (Evidence)
+                                      </div>
+                                      <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 text-sm text-slate-800 leading-relaxed italic">
+                                        "{conflict.evidence || 'N/A'}"
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Right Column: Reasoning & Suggestion */}
+                                  <div className="space-y-4">
+                                    <div>
+                                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">推理过程 (Reasoning)</div>
+                                      <div className="text-sm text-slate-600 leading-relaxed">
+                                        {conflict.reasoning || 'N/A'}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="text-xs font-bold text-slate-400 uppercase mb-2">审查建议 (Suggestion)</div>
+                                      <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-sm text-emerald-800 font-medium">
+                                        {conflict.suggestion || 'N/A'}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

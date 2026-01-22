@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 from backend.core.config import settings
 from backend.core.db import engine
 from backend.models.comparison import ComparisonDocument, ComparisonDocumentStatus, ComparisonResult
+from backend.schemas.comparison import ComparisonResultRead
 from backend.models.chunk import DocumentChunk
 from backend.services.mineru_service import mineru_service
 from backend.integrations.vector_store import ingest_chunks_to_chroma, delete_document_from_chroma, dynamic_chunk_text
@@ -260,27 +261,28 @@ class ComparisonService:
 
         return doc
     @staticmethod
-    def get_results_by_task(session: Session, task_id: str) -> List[ComparisonResult]:
+    def get_results_by_task(session: Session, task_id: str) -> List[ComparisonResultRead]:
         """Get all comparison results for a specific task."""
-        # We need to join with ComparisonDocument to get the document name if needed,
-        # but for now let's just return the results.
-        # Actually, the frontend expects 'document_name' in ComparisonResult interface (enriched field).
-        # So we might need to enrich it here or let the frontend fetch documents separately.
-        # Let's enrich it here for convenience.
         results = session.exec(select(ComparisonResult).where(ComparisonResult.task_id == task_id)).all()
         
         # Enrich with document name
         enriched_results = []
         for res in results:
             doc = session.get(ComparisonDocument, res.comparison_document_id)
-            # Create a dict or modify object if possible. SQLModel objects are not dicts.
-            # We can return the object and let Pydantic handle it if we add a property, 
-            # or just return a list of dicts/custom objects.
-            # Let's try to set the attribute dynamically if Pydantic allows, or just return as is
-            # and let frontend handle mapping if we send document list.
-            # But wait, the API response model is List[ComparisonResult].
-            # If we want to include document_name, we should probably update the model or return a different schema.
-            # For simplicity, let's just return the results and let frontend map IDs to names using the documents list it already has or fetches.
-            pass
+            # Create enriched object
+            res_read = ComparisonResultRead.mode_validate(res) if hasattr(ComparisonResultRead, 'mode_validate') else ComparisonResultRead.from_orm(res)
+            # SQLModel compatibility check: older versions use from_orm, newer likely model_validate but from_orm is usually aliased or supported in v1 pydantic usage.
+            # Since strict pydantic v2 might be used, let's try direct instantiation if from_orm keeps failing,
+            # but usually from_orm is safe for SQLModel objects.
+            # Wait, SQLModel inherits from Pydantic V2 BaseModel in recent versions but supports V1 methods.
+            # To be safe and since I don't know the exact pydantic version:
             
-        return results
+            # Using from_orm is the standard way in SQLModel docs.
+            res_read = ComparisonResultRead.from_orm(res)
+            
+            if doc:
+                res_read.document_name = doc.filename
+                
+            enriched_results.append(res_read)
+            
+        return enriched_results
