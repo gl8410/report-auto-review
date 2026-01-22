@@ -1,0 +1,35 @@
+# 1. 排除版本控制和编辑器配置
+.git
+.vscode
+.idea
+.clinerules
+
+# 2. 排除依赖（服务器上会重新安装）
+node_modules
+backend/venv
+backend/.venv
+__pycache__
+*.pyc
+.pytest_cache
+
+
+# 3. 排除大量的测试数据和日志 (根据你的描述)
+communicate/
+testdata/display/
+knowledgedata/
+backend/tests/
+testdata/
+.clienrules
+backend/uploads/
+backend/static/
+.roo/
+
+
+# 4. 排除环境变量 (生产环境用服务器上的)
+.env
+.env.local
+
+
+# 5. 排除构建产物
+dist/
+build/
