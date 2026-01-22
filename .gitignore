@@ -81,5 +81,9 @@ ehthumbs.db
 Desktop.ini
 
 # Communication History & Test Output
-communicate/communicatehistory.txt
+communicate/
 testdata/display/
+knowledgedata/
+backend/tests/
+testdata/
+.clienrules
