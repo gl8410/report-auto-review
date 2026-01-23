@@ -1,8 +1,7 @@
 import { RuleGroup, Rule, Document, DocumentChunk, ReviewTask, ReviewResult, ComparisonDocument, ComparisonResult } from '../types';
 import { supabase } from './supabase';
 
-const API_BASE = 'http://localhost:8000/api/v1';
-// const API_BASE = 'http://10.254.68.193:8000/api/v1';
+const API_BASE = '/api/v1';
 
 const getHeaders = async (contentType = 'application/json') => {
   const { data: { session } } = await supabase.auth.getSession();

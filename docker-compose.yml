@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # -------------------------
+  # 1. 数据库 (Postgres)
+  # -------------------------
+  db:
+    image: postgres:15
+    container_name: report-review-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}       # 从 .env 读取 ads_user
+      POSTGRES_PASSWORD: ${DB_PASS}   # 从 .env 读取 ads_password
+      POSTGRES_DB: ${DB_NAME}         # 从 .env 读取 ads_db
+    volumes:
+      # ✅ 关键：将服务器的 ./data/postgres 挂载到容器内，实现数据持久化
+      - ./data/postgres:/var/lib/postgresql/data
+    # ❌ 不暴露端口到公网，仅内部访问
+
+  # -------------------------
+  # 2. 向量数据库 (Chroma)
+  # -------------------------
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: report-review-chroma
+    restart: always
+    volumes:
+      # ✅ 关键：将刚才解压的数据目录挂载进去
+      # 注意：Chroma 容器默认数据路径通常是 /chroma/chroma
+      - ./data/chroma/chroma_data_backup:/chroma/chroma
+    # ❌ 不暴露端口到公网
+
+  # -------------------------
+  # 3. 后端 API (Backend)
+  # -------------------------
+  backend:
+    build: ./backend
+    container_name: report-review-backend
+    restart: always
+    ports:
+      - "8874:8874"  # ✅ API 需要暴露给公网 (如果不经过 Nginx)
+    environment:
+      # 使用服务名 'db' 和 'chroma' 连接，而不是 localhost
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    depends_on:
+      - db
+      - chroma
+
+  # -------------------------
+  # 4. 前端 (Frontend)
+  # -------------------------
+  frontend:
+    build: 
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    container_name: report-review-frontend
+    restart: always
+    ports:
+      - "8875:80"      # ✅ 网页入口
+    depends_on:
+      - backend

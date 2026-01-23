@@ -19,7 +19,6 @@ testdata/display/
 knowledgedata/
 backend/tests/
 testdata/
-.clienrules
 backend/uploads/
 backend/static/
 .roo/
