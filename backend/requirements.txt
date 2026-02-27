@@ -10,6 +10,7 @@ pydantic-settings>=2.0.0
 alembic>=1.13.0
 reportlab>=4.0.0
 supabase>=2.3.0
+psycopg2-binary>=2.9.9
 
 # Testing
 pytest>=8.0.0

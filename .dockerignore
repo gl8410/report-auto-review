@@ -1,34 +1,43 @@
-# 1. 排除版本控制和编辑器配置
+# Root .dockerignore
+# Note: docker-compose service build contexts are ./frontend and ./backend,
+# each with their own .dockerignore. This file applies to root-context builds only.
+
+# Version control & editor
 .git
 .vscode
 .idea
 .clinerules
-
-# 2. 排除依赖（服务器上会重新安装）
-node_modules
-backend/venv
-backend/.venv
-__pycache__
-*.pyc
-.pytest_cache
-
-
-# 3. 排除大量的测试数据和日志 (根据你的描述)
-communicate/
-testdata/display/
-knowledgedata/
-backend/tests/
-testdata/
-backend/uploads/
-backend/static/
 .roo/
 
-
-# 4. 排除环境变量 (生产环境用服务器上的)
+# Environment variables
 .env
-.env.local
+.env.*
 
+# Frontend (has its own build context ./frontend with its own .dockerignore)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/coverage/
+node_modules/
 
-# 5. 排除构建产物
+# Backend (has its own build context ./backend)
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/uploads/
+backend/static/
+backend/tests/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Test & documentation data
+communicate/
+testdata/
+knowledgedata/
+
+# Build artifacts
 dist/
 build/

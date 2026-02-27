@@ -27,4 +27,4 @@ EXPOSE 8874
 
 # Command to run the application
 # Use the correct import path for the module
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8874"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8874"]

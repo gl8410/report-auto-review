@@ -1,0 +1,27 @@
+# frontend/.dockerignore
+# Applied when docker-compose builds the frontend service (context: ./frontend)
+
+# Dependencies — reinstalled during image build via pnpm install
+node_modules/
+.pnpm-store/
+
+# Build artifacts — rebuilt during image build via pnpm build
+dist/
+dist-ssr/
+.vite/
+coverage/
+
+# Local environment files — injected as ARGs/ENVs in docker-compose
+.env
+.env.*
+
+# Development & editor files
+.vscode/
+.idea/
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+

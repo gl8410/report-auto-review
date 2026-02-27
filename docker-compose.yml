@@ -37,6 +37,8 @@ services:
     build: ./backend
     container_name: report-review-backend
     restart: always
+    env_file:
+      - .env
     ports:
       - "8874:8874"  # ✅ API 需要暴露给公网 (如果不经过 Nginx)
     environment:
@@ -52,8 +54,8 @@ services:
   # 4. 前端 (Frontend)
   # -------------------------
   frontend:
-    build: 
-      context: .
+    build:
+      context: ./frontend
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
