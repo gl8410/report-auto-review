@@ -10,24 +10,31 @@ logger = logging.getLogger(__name__)
 # ChromaDB client (singleton)
 _chroma_client: Any = None
 
-def get_chroma_client() -> Any:
-    """Get ChromaDB client singleton"""
+def get_chroma_client() -> Optional[Any]:
+    """Get ChromaDB client singleton. Returns None if connection fails."""
     global _chroma_client
     if _chroma_client is None:
-        # Force no proxy for localhost connections to avoid interference
-        import os
-        os.environ["NO_PROXY"] = "localhost,127.0.0.1"
-        
-        # Use a more resilient client configuration for local Windows environments
-        _chroma_client = chromadb.HttpClient(
-            host=settings.CHROMA_HOST,
-            port=settings.CHROMA_PORT,
-            settings=chromadb.Settings(
-                allow_reset=True,
-                anonymized_telemetry=False
+        try:
+            # Force no proxy for localhost connections to avoid interference
+            import os
+            os.environ["NO_PROXY"] = f"localhost,127.0.0.1,{settings.CHROMA_HOST}"
+            
+            # Use a more resilient client configuration for local Windows environments
+            _chroma_client = chromadb.HttpClient(
+                host=settings.CHROMA_HOST,
+                port=settings.CHROMA_PORT,
+                settings=chromadb.Settings(
+                    allow_reset=True,
+                    anonymized_telemetry=False
+                )
             )
-        )
-    return _chroma_client
+            # Heartbeat check to verify connection
+            _chroma_client.heartbeat()
+        except Exception as e:
+            logger.warning(f"Could not connect to ChromaDB at {settings.CHROMA_HOST}:{settings.CHROMA_PORT}. Vector search will be disabled. Error: {e}")
+            _chroma_client = False # Use False to indicate failed connection attempt
+            
+    return _chroma_client if _chroma_client is not False else None
 
 # Document collection name
 DOCUMENTS_COLLECTION = "documents"
@@ -177,49 +184,60 @@ async def ingest_chunks_to_chroma(
     filename: str
 ) -> int:
     """
-    Store pre-generated chunks in ChromaDB
+    Store pre-generated chunks in ChromaDB. Skips if Chroma is unavailable.
     """
     if not chunks:
         return 0
 
-    # Get embeddings for all chunks
-    chunk_texts = [c["text"] for c in chunks]
-    embeddings = await get_embeddings(chunk_texts)
-
-    # Get or create collection
     client = get_chroma_client()
-    collection = client.get_or_create_collection(
-        name=DOCUMENTS_COLLECTION,
-        metadata={"hnsw:space": "cosine"}
-    )
+    if not client:
+        logger.info(f"Skipping Chroma ingestion for {filename} (Chroma unavailable)")
+        return 0
 
-    # Prepare data for ChromaDB
-    ids = [f"{document_id}_{c['index']}" for c in chunks]
-    metadatas = [
-        {
-            "document_id": document_id,
-            "filename": filename,
-            "chunk_index": c["index"]
-        }
-        for c in chunks
-    ]
+    try:
+        # Get embeddings for all chunks
+        chunk_texts = [c["text"] for c in chunks]
+        embeddings = await get_embeddings(chunk_texts)
 
-    # Add to collection
-    collection.add(
-        ids=ids,
-        embeddings=embeddings,
-        documents=chunk_texts,
-        metadatas=metadatas
-    )
+        # Get or create collection
+        collection = client.get_or_create_collection(
+            name=DOCUMENTS_COLLECTION,
+            metadata={"hnsw:space": "cosine"}
+        )
 
-    return len(chunks)
+        # Prepare data for ChromaDB
+        ids = [f"{document_id}_{c['index']}" for c in chunks]
+        metadatas = [
+            {
+                "document_id": document_id,
+                "filename": filename,
+                "chunk_index": c["index"]
+            }
+            for c in chunks
+        ]
+
+        # Add to collection
+        collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            documents=chunk_texts,
+            metadatas=metadatas
+        )
+
+        return len(chunks)
+    except Exception as e:
+        logger.error(f"Error ingesting to Chroma: {e}")
+        return 0
 
 async def delete_document_from_chroma(document_id: str) -> bool:
     """
-    Delete all chunks of a document from ChromaDB
+    Delete all chunks of a document from ChromaDB. Skips if Chroma is unavailable.
     """
+    client = get_chroma_client()
+    if not client:
+        return True # Return True to not block document deletion flow
+
     try:
-        client = get_chroma_client()
         collection = client.get_or_create_collection(name=DOCUMENTS_COLLECTION)
 
         # Delete by document_id filter
@@ -237,16 +255,18 @@ async def search_document_chunks(
     n_results: int = 5
 ) -> List[Dict]:
     """
-    Search for relevant document chunks
+    Search for relevant document chunks. Returns empty list if Chroma is unavailable.
     """
-    # Get query embedding
-    query_embeddings = await get_embeddings([query])
-
     client = get_chroma_client()
+    if not client:
+        return []
 
     try:
+        # Get query embedding
+        query_embeddings = await get_embeddings([query])
         collection = client.get_collection(name=DOCUMENTS_COLLECTION)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Search failed or collection not found: {e}")
         return []
 
     # Build where filter
