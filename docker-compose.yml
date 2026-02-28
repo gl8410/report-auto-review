@@ -35,6 +35,8 @@ services:
     restart: always
     volumes:
       - /data/volumes/review_chroma:/chroma/chroma
+    environment:
+      - PERSIST_DIRECTORY=/chroma/chroma
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
       interval: 30s
