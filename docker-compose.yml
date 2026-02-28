@@ -40,7 +40,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8874:8874"  # ✅ API 需要暴露给公网 (如果不经过 Nginx)
+      - "6802:8874"  # ✅ API 需要暴露给公网 (如果不经过 Nginx)
     environment:
       # 使用服务名 'db' 和 'chroma' 连接，而不是 localhost
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}
@@ -62,6 +62,6 @@ services:
     container_name: report-review-frontend
     restart: always
     ports:
-      - "8875:80"      # ✅ 网页入口
+      - "7802:80"      # ✅ 网页入口
     depends_on:
       - backend

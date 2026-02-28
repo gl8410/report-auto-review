@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
 from enum import Enum
@@ -34,7 +34,7 @@ class RuleGroup(SQLModel, table=True):
     type: str = Field(default=RuleGroupType.PRIVATE, index=True)
     parent_id: Optional[str] = Field(default=None, foreign_key="rule_groups.id", index=True)
     owner_id: Optional[str] = Field(default=None, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Relationships
     rules: List["Rule"] = Relationship(back_populates="group")
@@ -53,7 +53,7 @@ class Rule(SQLModel, table=True):
     review_type: Optional[str] = None  # 审查类型
     risk_level: str = "中风险"  # 风险等级: 低风险/中风险/高风险
     owner_id: Optional[str] = Field(default=None, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Relationships
     group: Optional[RuleGroup] = Relationship(back_populates="rules")

@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 import uuid
 import json
@@ -12,6 +14,8 @@ from app.models.chunk import DocumentChunk
 from app.services.mineru_service import mineru_service
 from app.integrations.vector_store import ingest_chunks_to_chroma, delete_document_from_chroma, dynamic_chunk_text
 
+logger = logging.getLogger(__name__)
+
 async def process_comparison_document_background_from_file(doc_id: str, file_path: str, filename: str):
     """Background task to parse comparison document with MinerU and vectorize (reads from file)."""
     from sqlmodel import Session as SyncSession
@@ -19,7 +23,7 @@ async def process_comparison_document_background_from_file(doc_id: str, file_pat
     with SyncSession(engine) as session:
         doc = session.get(ComparisonDocument, doc_id)
         if not doc:
-            print(f"Comparison Document {doc_id} not found for processing")
+            logger.warning(f"Comparison Document {doc_id} not found for processing")
             return
 
         # Read file content from disk
@@ -27,7 +31,7 @@ async def process_comparison_document_background_from_file(doc_id: str, file_pat
             with open(file_path, 'rb') as f:
                 file_content = f.read()
         except Exception as e:
-            print(f"Error reading file {file_path}: {e}")
+            logger.error(f"Error reading file {file_path}: {e}")
             doc.status = ComparisonDocumentStatus.FAILED.value
             doc.error_message = f"Failed to read file: {str(e)}"
             session.add(doc)
@@ -41,14 +45,17 @@ async def process_comparison_document_background_from_file(doc_id: str, file_pat
             session.commit()
 
             # Use MinerU to extract text
-            print(f"Sending comparison document {filename} to MinerU for parsing...")
             files_data = [{
                 "name": filename,
                 "content": file_content,
                 "data_id": doc_id
             }]
 
-            results = mineru_service.process_files(files_data)
+            # Run the blocking MinerU call in a thread pool so it doesn't block the event loop.
+            # mineru_service.process_files() uses the `requests` library (synchronous I/O) and
+            # can take several minutes. Calling it directly in an async function would freeze
+            # the event loop and cause ConnectTimeout errors in subsequent httpx calls.
+            results = await asyncio.to_thread(mineru_service.process_files, files_data)
 
             if not results or len(results) == 0:
                 raise ValueError("No results returned from MinerU")
@@ -80,7 +87,7 @@ async def process_comparison_document_background_from_file(doc_id: str, file_pat
             session.add(doc)
             session.commit()
 
-            print(f"Markdown saved to {markdown_path}, starting embedding...")
+
 
             # Update status to EMBEDDING
             doc.status = ComparisonDocumentStatus.EMBEDDING.value
@@ -98,12 +105,9 @@ async def process_comparison_document_background_from_file(doc_id: str, file_pat
             session.add(doc)
             session.commit()
 
-            print(f"Successfully processed comparison document {filename} with {chunk_count} chunks")
-
         except Exception as e:
             import traceback
-            traceback.print_exc()
-            print(f"Error processing comparison document {filename}: {repr(e)}")
+            logger.error(f"Error processing comparison document {filename}: {repr(e)}\n{traceback.format_exc()}")
             doc.status = ComparisonDocumentStatus.FAILED.value
             doc.error_message = str(e)
             session.add(doc)
@@ -212,6 +216,8 @@ class ComparisonService:
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
 
+        filename = doc.filename
+
         # Delete from ChromaDB
         await delete_document_from_chroma(doc_id)
 
@@ -220,20 +226,28 @@ class ComparisonService:
             try:
                 os.remove(doc.storage_path)
             except Exception as e:
-                print(f"Warning: Could not delete file {doc.storage_path}: {e}")
+                logger.warning(f"Could not delete file {doc.storage_path}: {e}")
 
         # Delete markdown file from disk
         if doc.markdown_path and os.path.exists(doc.markdown_path):
             try:
                 os.remove(doc.markdown_path)
             except Exception as e:
-                print(f"Warning: Could not delete markdown file {doc.markdown_path}: {e}")
+                logger.warning(f"Could not delete markdown file {doc.markdown_path}: {e}")
+
+        # Delete related ComparisonResult records first (FK constraint)
+        related_results = session.exec(
+            select(ComparisonResult).where(ComparisonResult.comparison_document_id == doc_id)
+        ).all()
+        for result in related_results:
+            session.delete(result)
+        session.flush()  # Force child DELETEs to execute before parent
 
         # Delete from database
         session.delete(doc)
         session.commit()
 
-        return {"message": f"Comparison document '{doc.filename}' deleted successfully"}
+        return {"message": f"Comparison document '{filename}' deleted successfully"}
 
     @staticmethod
     async def retry_document(session: Session, doc_id: str, background_tasks) -> ComparisonDocument:

@@ -237,8 +237,8 @@ export const HistoryAnalysis: React.FC = () => {
     const renderUpload = () => (
         <div className="max-w-4xl mx-auto space-y-8 mt-8">
             <div className="text-center">
-                <h2 className="text-3xl font-bold text-slate-900">历史报告智能分析</h2>
-                <p className="text-slate-500 mt-2">上传原始稿件和修改后稿件，AI将自动提取专家审查意见</p>
+                <h2 className="text-3xl font-bold text-slate-900">历史报告智能分析（测试）</h2>
+                <p className="text-slate-500 mt-2">上传原始稿件和修改后稿件pdf，AI将自动提取专家审查意见，暂无法支持超过10m的文件分析，上传前请将文件压缩或分段</p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-8">

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlmodel import SQLModel, Field
 from enum import Enum
@@ -26,7 +26,7 @@ class ComparisonDocument(SQLModel, table=True):
     error_message: Optional[str] = None  # Error message if parsing failed
     description: Optional[str] = None
     owner_id: Optional[str] = Field(default=None, index=True)
-    upload_time: datetime = Field(default_factory=datetime.utcnow)
+    upload_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class ComparisonResult(SQLModel, table=True):
     """对比结果表"""
@@ -42,4 +42,4 @@ class ComparisonResult(SQLModel, table=True):
     details: Optional[str] = None  # JSON string containing specific conflict points
     owner_id: Optional[str] = Field(default=None, index=True)
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -3,6 +3,10 @@ import { ComparisonDocument } from '../types';
 import { FileUp, FileText, CheckCircle2, Loader2, AlertCircle, Trash2, RefreshCw, Info, Download, RotateCcw, X } from 'lucide-react';
 import { api } from '../services/api';
 
+// Parse a datetime string from the backend as UTC (append Z if no tz info)
+const parseUTC = (s: string) => new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z');
+const formatLocalTime = (s: string) => parseUTC(s).toLocaleString('zh-CN');
+
 // Upload queue item type
 interface UploadQueueItem {
     id: string;
@@ -24,18 +28,30 @@ export const ComparisonManager: React.FC = () => {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const docsRef = useRef<ComparisonDocument[]>([]);
+    const uploadQueueRef = useRef<UploadQueueItem[]>([]);
     const abortControllerRef = useRef<AbortController | null>(null);
     const isProcessingQueueRef = useRef<boolean>(false);
 
-    // Keep docsRef in sync with docs state
+    // Keep docsRef and uploadQueueRef in sync with state
     useEffect(() => {
         docsRef.current = docs;
     }, [docs]);
 
+    useEffect(() => {
+        uploadQueueRef.current = uploadQueue;
+    }, [uploadQueue]);
+
     const loadDocs = useCallback(async () => {
         try {
             const data = await api.getComparisonDocuments();
-            setDocs(data);
+            // Deduplicate by id (defensive: server should never return duplicates)
+            const seen = new Set<string>();
+            const unique = data.filter(d => {
+                if (seen.has(d.id)) return false;
+                seen.add(d.id);
+                return true;
+            });
+            setDocs(unique);
             setError(null);
         } catch (e) {
             console.error(e);
@@ -45,12 +61,13 @@ export const ComparisonManager: React.FC = () => {
 
     useEffect(() => {
         loadDocs();
-        // Poll more frequently (every 2 seconds) when there are documents being processed
+        // Poll every 2 seconds when there are documents being processed or items in the upload queue
         const interval = setInterval(() => {
             const hasProcessing = docsRef.current.some(d =>
                 d.status === 'UPLOADING' || d.status === 'PARSING' || d.status === 'EMBEDDING'
             );
-            if (hasProcessing) {
+            const hasQueueItems = uploadQueueRef.current.length > 0;
+            if (hasProcessing || hasQueueItems) {
                 loadDocs();
             }
         }, 2000);
@@ -99,32 +116,18 @@ export const ComparisonManager: React.FC = () => {
                         }
                     );
 
-                    // Add the new document to the list
-                    setDocs(prevDocs => [newDoc, ...prevDocs]);
+                    // Add the new document to the list (guard against polling race: loadDocs may have already added it)
+                    setDocs(prevDocs =>
+                        prevDocs.some(d => d.id === newDoc.id) ? prevDocs : [newDoc, ...prevDocs]
+                    );
 
                     // Mark as completed
                     setUploadQueue(q => q.map(item =>
                         item.id === nextItem.id ? { ...item, status: 'completed' as const, progress: 100 } : item
                     ));
 
-                    // Start polling for this document
-                    const pollInterval = setInterval(async () => {
-                        try {
-                            const updatedDoc = await api.getComparisonDocument(newDoc.id);
-                            setDocs(prevDocs =>
-                                prevDocs.map(d => d.id === newDoc.id ? updatedDoc : d)
-                            );
-
-                            if (updatedDoc.status === 'DONE' || updatedDoc.status === 'FAILED') {
-                                clearInterval(pollInterval);
-                            }
-                        } catch (e) {
-                            console.error('Error polling document status:', e);
-                            clearInterval(pollInterval);
-                        }
-                    }, 1000);
-
-                    setTimeout(() => clearInterval(pollInterval), 30 * 60 * 1000);
+                    // Status updates are handled by the global loadDocs polling interval above.
+                    // No per-document polling needed.
 
                     // Remove from queue after 2 seconds
                     setTimeout(() => {
@@ -224,7 +227,7 @@ export const ComparisonManager: React.FC = () => {
         setDeletingId(doc.id);
         try {
             await api.deleteComparisonDocument(doc.id);
-            await loadDocs();
+            setDocs(prevDocs => prevDocs.filter(d => d.id !== doc.id));
         } catch (e: any) {
             setError(e.message || "Failed to delete document");
         } finally {
@@ -463,7 +466,7 @@ export const ComparisonManager: React.FC = () => {
                                     {getStatusBadge(doc.status)}
                                 </td>
                                 <td className="px-6 py-4 text-slate-500 text-xs font-mono">
-                                    {new Date(doc.upload_time).toLocaleString('zh-CN')}
+                                    {formatLocalTime(doc.upload_time)}
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                     <div className="flex items-center justify-center gap-2">

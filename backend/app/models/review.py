@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import SQLModel, Field
 from enum import Enum
@@ -33,7 +33,7 @@ class ReviewTask(SQLModel, table=True):
     end_time: Optional[datetime] = None
     owner_id: Optional[str] = Field(default=None, index=True)
     error_message: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     credits_charged: int = Field(default=0)
 
 class ReviewResultItem(SQLModel, table=True):
@@ -48,4 +48,4 @@ class ReviewResultItem(SQLModel, table=True):
     evidence: Optional[str] = None  # 引用原文片段
     suggestion: Optional[str] = None  # 修改建议
     owner_id: Optional[str] = Field(default=None, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

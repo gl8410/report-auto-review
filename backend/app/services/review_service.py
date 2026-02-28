@@ -1,6 +1,9 @@
+import logging
 from datetime import datetime, timezone
 import json
 from typing import List, Optional, Dict, Any, Union
+
+logger = logging.getLogger(__name__)
 from fastapi import HTTPException, BackgroundTasks
 from sqlmodel import Session, select, or_
 from app.core.db import engine
@@ -29,7 +32,7 @@ async def execute_review_for_rule(
         rule.get("review_type", "")
     )
 
-    print(f"  Generated {len(search_queries)} search queries for rule {rule.get('clause_number', 'N/A')}")
+
 
     # Step 2: Retrieve relevant document chunks using all queries
     all_chunks = []
@@ -52,7 +55,7 @@ async def execute_review_for_rule(
     all_chunks.sort(key=lambda x: x.get("distance", 1.0))
     context_chunks = all_chunks[:10]
 
-    print(f"  Retrieved {len(context_chunks)} unique chunks (from {len(all_chunks)} total)")
+
 
     # Step 3: Compare rule with context using LLM
     result = await compare_rule_with_context(
@@ -95,7 +98,7 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
         # Get task
         task = session.get(ReviewTask, task_id)
         if not task:
-            print(f"Task {task_id} not found")
+            logger.warning(f"Task {task_id} not found")
             return
 
         # Get document
@@ -118,8 +121,8 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                         }
                     )
                 except Exception as e:
-                    print(f"Failed to refund credits for task {task_id}: {e}")
-            
+                    logger.error(f"Failed to refund credits for task {task_id}: {e}")
+
             session.commit()
             return
 
@@ -132,8 +135,6 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
         
         # Check if task is already cancelled
         if task.status == TaskStatus.CANCELLED.value:
-            print(f"[Review {task_id}] Review cancelled before processing started.")
-            
             # Refund if cancelled in PENDING
             if task.credits_charged > 0:
                 try:
@@ -148,8 +149,8 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                         }
                     )
                 except Exception as e:
-                    print(f"Failed to refund credits for task {task_id}: {e}")
-            
+                    logger.error(f"Failed to refund credits for task {task_id}: {e}")
+
             return
 
         # Update task to PROCESSING
@@ -164,18 +165,16 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
         
         completed = 0
 
-        print(f"[Review {task_id}] Starting review of {len(rules)} rules against document '{doc.filename}'")
+
 
         # 1. Execute Rule Review
         for i, rule in enumerate(rules):
             # Check for cancellation
             session.refresh(task)
             if task.status == TaskStatus.CANCELLED.value:
-                print(f"[Review {task_id}] Review cancelled by user.")
                 return
 
             try:
-                print(f"[Review {task_id}] Processing rule {i+1}/{len(rules)}: {rule.clause_number}")
 
                 # Execute review for this rule
                 rule_dict = {
@@ -210,7 +209,7 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                 session.commit()
 
             except Exception as e:
-                print(f"[Review {task_id}] Error processing rule {rule.clause_number}: {e}")
+                logger.error(f"[Review {task_id}] Error processing rule {rule.clause_number}: {e}")
                 # Save error result
                 result_item = ReviewResultItem(
                     task_id=task_id,
@@ -228,7 +227,6 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
 
         # 2. Execute Comparison Review (if any)
         if comparison_doc_ids:
-            print(f"[Review {task_id}] Starting comparison with {len(comparison_doc_ids)} documents")
             # For each comparison document
             for comp_id in comparison_doc_ids:
                 comp_doc = session.get(ComparisonDocument, comp_id)
@@ -290,7 +288,7 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
                     session.commit()
                     
                 except Exception as e:
-                    print(f"[Review {task_id}] Error comparing with {comp_doc.filename}: {e}")
+                    logger.error(f"[Review {task_id}] Error comparing with {comp_doc.filename}: {e}")
 
         # Mark task as completed
         task.status = TaskStatus.COMPLETED.value
@@ -298,7 +296,7 @@ async def execute_review_background(task_id: str, document_id: str, rule_ids: Li
         task.end_time = datetime.now(timezone.utc)
         session.commit()
 
-        print(f"[Review {task_id}] Review completed!")
+
 
 class ReviewService:
     @staticmethod

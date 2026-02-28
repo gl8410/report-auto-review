@@ -5,7 +5,7 @@ from app.core.config import settings
 # Create engine with connection pool settings
 engine = create_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=False,  # Never echo SQL; controlled via logging level instead
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10

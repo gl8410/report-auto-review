@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, path.resolve(__dirname, '..'), '');
     const backendPort = env.BACKEND_PORT || '6802';
     return {
+      // Tell Vite to load .env files from the repo root, not frontend/
+      envDir: path.resolve(__dirname, '..'),
       server: {
         port: parseInt(env.FRONTEND_PORT) || 7802,
         host: '0.0.0.0',

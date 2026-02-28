@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import SQLModel, Field
 from enum import Enum
@@ -26,4 +26,4 @@ class Document(SQLModel, table=True):
     error_message: Optional[str] = None  # Error message if parsing failed
     meta_info: Optional[str] = None  # JSON string
     owner_id: Optional[str] = Field(default=None, index=True)
-    upload_time: datetime = Field(default_factory=datetime.utcnow)
+    upload_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

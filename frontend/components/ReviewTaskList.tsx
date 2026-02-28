@@ -2,6 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Loader, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
 
+// Parse a datetime string from the backend as UTC (append Z if no tz info)
+const parseUTC = (s: string) => new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z');
+const formatLocalTime = (s: string) => parseUTC(s).toLocaleString('zh-CN');
+
 interface ReviewTaskListProps {
   onSelectTask: (taskId: string) => void;
   activeTaskId: string | null;
@@ -60,7 +64,7 @@ export const ReviewTaskList: React.FC<ReviewTaskListProps> = ({ onSelectTask, ac
                   </div>
                 </div>
                 <div className="flex justify-between items-center text-xs text-slate-500">
-                  <span>{new Date(task.created_at).toLocaleString()}</span>
+                  <span>{formatLocalTime(task.created_at)}</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] ${
                     task.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' :
                     task.status === 'FAILED' ? 'bg-red-100 text-red-700' :

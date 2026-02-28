@@ -1,8 +1,11 @@
+import logging
 import re
 import httpx
 import chromadb
 from typing import List, Dict, Any, Optional
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # ChromaDB client (singleton)
 _chroma_client: Any = None
@@ -35,7 +38,7 @@ async def get_embeddings(texts: List[str], batch_size: int = 2) -> List[List[flo
     timeout_config = httpx.Timeout(60.0, connect=10.0)
     all_embeddings: List[List[float]] = []
 
-    async with httpx.AsyncClient(timeout=timeout_config) as client:
+    async with httpx.AsyncClient(timeout=timeout_config, trust_env=False) as client:
         # Process in batches
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
@@ -54,13 +57,10 @@ async def get_embeddings(texts: List[str], batch_size: int = 2) -> List[List[flo
                 batch_embeddings = [item["embedding"] for item in result["data"]]
                 all_embeddings.extend(batch_embeddings)
             except httpx.HTTPStatusError as e:
-                print(f"Embedding error for batch {i // batch_size + 1}: {e}")
-                print(f"Response content: {e.response.text}")
+                logger.error(f"Embedding error for batch {i // batch_size + 1}: {e} | Response: {e.response.text}")
                 raise
             except Exception as e:
-                print(f"Embedding error for batch {i // batch_size + 1}: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error(f"Embedding error for batch {i // batch_size + 1}: {e}")
                 raise
 
     return all_embeddings
@@ -215,7 +215,7 @@ async def delete_document_from_chroma(document_id: str) -> bool:
         )
         return True
     except Exception as e:
-        print(f"Error deleting document from ChromaDB: {e}")
+        logger.error(f"Error deleting document from ChromaDB: {e}")
         return False
 
 async def search_document_chunks(

@@ -3,6 +3,10 @@ import { Document, DocumentChunk } from '../types';
 import { FileUp, FileText, CheckCircle2, Loader2, AlertCircle, Trash2, RefreshCw, Info, Eye, X, Download, RotateCcw } from 'lucide-react';
 import { api } from '../services/api';
 
+// Parse a datetime string from the backend as UTC (append Z if no tz info)
+const parseUTC = (s: string) => new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z');
+const formatLocalTime = (s: string) => parseUTC(s).toLocaleString('zh-CN');
+
 // Upload queue item type
 interface UploadQueueItem {
   id: string;
@@ -105,8 +109,10 @@ export const DocumentUploader: React.FC = () => {
             }
           );
 
-          // Add the new document to the list
-          setDocs(prevDocs => [newDoc, ...prevDocs]);
+          // Add the new document to the list (guard against polling race: loadDocs may have already added it)
+          setDocs(prevDocs =>
+            prevDocs.some(d => d.id === newDoc.id) ? prevDocs : [newDoc, ...prevDocs]
+          );
 
           // Mark as completed
           setUploadQueue(q => q.map(item =>
@@ -489,7 +495,7 @@ export const DocumentUploader: React.FC = () => {
                   {getStatusBadge(doc.status)}
                 </td>
                 <td className="px-6 py-4 text-slate-500 text-xs font-mono">
-                  {new Date(doc.upload_time).toLocaleString('zh-CN')}
+                  {formatLocalTime(doc.upload_time)}
                 </td>
                 <td className="px-6 py-4 text-center">
                   <div className="flex items-center justify-center gap-2">

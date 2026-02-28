@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 import json
@@ -10,6 +11,8 @@ from app.models.document import Document, DocumentStatus
 from app.models.chunk import DocumentChunk
 from app.integrations.vector_store import ingest_chunks_to_chroma, delete_document_from_chroma, dynamic_chunk_text
 from app.services.mineru_service import mineru_service
+
+logger = logging.getLogger(__name__)
 
 
 async def extract_text_from_file(file_content: bytes, filename: str) -> str:
@@ -66,7 +69,7 @@ async def process_document_background_from_file(doc_id: str, file_path: str, fil
     with SyncSession(engine) as session:
         doc = session.get(Document, doc_id)
         if not doc:
-            print(f"Document {doc_id} not found for processing")
+            logger.warning(f"Document {doc_id} not found for processing")
             return
 
         # Read file content from disk
@@ -74,7 +77,7 @@ async def process_document_background_from_file(doc_id: str, file_path: str, fil
             with open(file_path, 'rb') as f:
                 file_content = f.read()
         except Exception as e:
-            print(f"Error reading file {file_path}: {e}")
+            logger.error(f"Error reading file {file_path}: {e}")
             doc.status = DocumentStatus.FAILED.value
             doc.error_message = f"Failed to read file: {str(e)}"
             session.add(doc)
@@ -88,7 +91,6 @@ async def process_document_background_from_file(doc_id: str, file_path: str, fil
             session.commit()
 
             # Use MinerU to extract text
-            print(f"Sending {filename} to MinerU for parsing...")
             files_data = [{
                 "name": filename,
                 "content": file_content,
@@ -122,7 +124,7 @@ async def process_document_background_from_file(doc_id: str, file_path: str, fil
             session.add(doc)
             session.commit()
 
-            print(f"Markdown saved to {markdown_path}, starting embedding...")
+
 
             # Update status to EMBEDDING
             doc.status = DocumentStatus.EMBEDDING.value
@@ -157,12 +159,9 @@ async def process_document_background_from_file(doc_id: str, file_path: str, fil
             session.add(doc)
             session.commit()
             
-            print(f"Successfully processed document {filename} with {chunk_count} chunks")
-
         except Exception as e:
             import traceback
-            traceback.print_exc()
-            print(f"Error processing document {filename}: {repr(e)}")
+            logger.error(f"Error processing document {filename}: {repr(e)}\n{traceback.format_exc()}")
             doc.status = DocumentStatus.FAILED.value
             doc.error_message = str(e)
             doc.meta_info = json.dumps({"error": str(e)})
@@ -285,14 +284,14 @@ class DocumentService:
             try:
                 os.remove(doc.storage_path)
             except Exception as e:
-                print(f"Warning: Could not delete file {doc.storage_path}: {e}")
+                logger.warning(f"Could not delete file {doc.storage_path}: {e}")
 
         # Delete markdown file from disk
         if doc.markdown_path and os.path.exists(doc.markdown_path):
             try:
                 os.remove(doc.markdown_path)
             except Exception as e:
-                print(f"Warning: Could not delete markdown file {doc.markdown_path}: {e}")
+                logger.warning(f"Could not delete markdown file {doc.markdown_path}: {e}")
 
         # Delete from database
         session.delete(doc)

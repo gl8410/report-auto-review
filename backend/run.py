@@ -8,4 +8,4 @@ if __name__ == "__main__":
 
     from app.core.config import settings
 
-    uvicorn.run("app.main:app", host="127.0.0.1", port=settings.BACKEND_PORT, reload=True)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=settings.BACKEND_PORT, reload=True, log_level="warning")

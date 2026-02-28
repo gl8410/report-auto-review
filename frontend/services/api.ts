@@ -70,10 +70,9 @@ export const api = {
 
   // ============== Rules ==============
   getRules: async (groupId: string, recursive: boolean = false): Promise<Rule[]> => {
-    const url = new URL(`${API_BASE}/rule-groups/${groupId}/rules`);
-    if (recursive) url.searchParams.append('recursive', 'true');
+    const qs = recursive ? '?recursive=true' : '';
     const headers = await getAuthHeaders();
-    const res = await fetch(url.toString(), { headers });
+    const res = await fetch(`${API_BASE}/rule-groups/${groupId}/rules${qs}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch rules');
     return res.json();
   },
@@ -648,5 +647,13 @@ export const api = {
     const res = await fetch(`${API_BASE}/reviews/${taskId}/comparison-results`, { headers });
     if (!res.ok) throw new Error('Failed to fetch comparison results');
     return res.json();
-  }
+  },
+
+  // ============== User Profile ==============
+  getProfile: async (): Promise<{ id: string; email: string; credits: number }> => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/users/me`, { headers });
+    if (!res.ok) throw new Error('Failed to fetch profile');
+    return res.json();
+  },
 };

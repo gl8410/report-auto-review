@@ -1,5 +1,5 @@
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from sqlmodel import SQLModel, Field
@@ -28,7 +28,7 @@ class HistoryAnalysisTask(SQLModel, table=True):
     approved_filenames: str = Field(default="[]")  # JSON list of filenames
     draft_file_paths: str = Field(default="[]")  # JSON list of storage paths
     approved_file_paths: str = Field(default="[]")  # JSON list of storage paths
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class InferredOpinion(SQLModel, table=True):
     """AI推断的审查意见"""
@@ -44,4 +44,4 @@ class InferredOpinion(SQLModel, table=True):
     draft_file_location: Optional[str] = None  # JSON: {filename, page, bbox}
     approved_file_location: Optional[str] = None  # JSON: {filename, page, bbox}
     status: str = OpinionStatus.PENDING.value
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

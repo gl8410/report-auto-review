@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase';
+import { api } from '../services/api';
 import { Lock } from 'lucide-react';
 
 interface UserProfile {
@@ -26,23 +27,8 @@ export const Profile: React.FC = () => {
   const fetchProfile = async () => {
     if (!user) return;
     try {
-      // We can fetch from our backend API which syncs with Supabase + credits
-      // Assuming we have an endpoint GET /api/v1/users/me calling get_current_user
-      // We need to inject the token.
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
-
-      if (!token) return;
-
-      const res = await fetch('http://localhost:8000/api/v1/users/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setProfile(data);
-      }
+      const data = await api.getProfile();
+      setProfile(data);
     } catch (error) {
       console.error("Failed to fetch profile", error);
     } finally {
