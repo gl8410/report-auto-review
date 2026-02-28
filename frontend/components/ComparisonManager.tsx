@@ -84,86 +84,91 @@ export const ComparisonManager: React.FC = () => {
     const processUploadQueue = useCallback(async () => {
         if (isProcessingQueueRef.current) return;
 
-        setUploadQueue(queue => {
-            const nextItem = queue.find(item => item.status === 'queued');
-            if (!nextItem) {
-                isProcessingQueueRef.current = false;
-                return queue;
-            }
+        // Find next item to process
+        const queueForProcessing = uploadQueueRef.current;
+        const nextItem = queueForProcessing.find(item => item.status === 'queued');
+        if (!nextItem) {
+            isProcessingQueueRef.current = false;
+            return;
+        }
 
-            isProcessingQueueRef.current = true;
-            setCurrentUpload(nextItem);
+        isProcessingQueueRef.current = true;
+        setCurrentUpload(nextItem);
 
-            // Update item status to uploading
-            const updatedQueue = queue.map(item =>
-                item.id === nextItem.id ? { ...item, status: 'uploading' as const } : item
+        // Update item status to uploading
+        setUploadQueue(queue => queue.map(item =>
+            item.id === nextItem.id ? { ...item, status: 'uploading' as const } : item
+        ));
+
+        // Start the upload
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
+        try {
+            // Upload the document with progress tracking
+            const newDoc = await api.uploadComparisonDocument(
+                nextItem.file,
+                abortController.signal,
+                (progress) => {
+                    setUploadQueue(q => q.map(item =>
+                        item.id === nextItem.id ? { ...item, progress } : item
+                    ));
+                }
             );
 
-            // Start the upload
-            (async () => {
-                const abortController = new AbortController();
-                abortControllerRef.current = abortController;
+            // Add the new document to the list (guard against polling race: loadDocs may have already added it)
+            setDocs(prevDocs =>
+                prevDocs.some(d => d.id === newDoc.id) ? prevDocs : [newDoc, ...prevDocs]
+            );
 
-                try {
-                    // Upload the document with progress tracking
-                    const newDoc = await api.uploadComparisonDocument(
-                        nextItem.file,
-                        abortController.signal,
-                        (progress) => {
-                            setUploadQueue(q => q.map(item =>
-                                item.id === nextItem.id ? { ...item, progress } : item
-                            ));
-                        }
-                    );
+            // Mark as completed
+            setUploadQueue(q => q.map(item =>
+                item.id === nextItem.id ? { ...item, status: 'completed' as const, progress: 100 } : item
+            ));
 
-                    // Add the new document to the list (guard against polling race: loadDocs may have already added it)
-                    setDocs(prevDocs =>
-                        prevDocs.some(d => d.id === newDoc.id) ? prevDocs : [newDoc, ...prevDocs]
-                    );
+            // Status updates are handled by the global loadDocs polling interval above.
+            // No per-document polling needed.
 
-                    // Mark as completed
-                    setUploadQueue(q => q.map(item =>
-                        item.id === nextItem.id ? { ...item, status: 'completed' as const, progress: 100 } : item
-                    ));
+            // Remove from queue after 2 seconds
+            setTimeout(() => {
+                setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
+            }, 2000);
 
-                    // Status updates are handled by the global loadDocs polling interval above.
-                    // No per-document polling needed.
+        } catch (e: any) {
+            if (e.name === 'AbortError') {
+                // Remove cancelled item from queue
+                setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
+            } else {
+                // Mark as failed
+                setUploadQueue(q => q.map(item =>
+                    item.id === nextItem.id
+                        ? { ...item, status: 'failed' as const, error: e.message || 'Upload failed' }
+                        : item
+                ));
 
-                    // Remove from queue after 2 seconds
-                    setTimeout(() => {
-                        setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
-                    }, 2000);
+                // Remove failed item after 5 seconds
+                setTimeout(() => {
+                    setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
+                }, 5000);
+            }
+        } finally {
+            abortControllerRef.current = null;
+            setCurrentUpload(null);
+            isProcessingQueueRef.current = false;
 
-                } catch (e: any) {
-                    if (e.name === 'AbortError') {
-                        // Remove cancelled item from queue
-                        setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
-                    } else {
-                        // Mark as failed
-                        setUploadQueue(q => q.map(item =>
-                            item.id === nextItem.id
-                                ? { ...item, status: 'failed' as const, error: e.message || 'Upload failed' }
-                                : item
-                        ));
-
-                        // Remove failed item after 5 seconds
-                        setTimeout(() => {
-                            setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
-                        }, 5000);
-                    }
-                } finally {
-                    abortControllerRef.current = null;
-                    setCurrentUpload(null);
-                    isProcessingQueueRef.current = false;
-
-                    // Process next item in queue
-                    setTimeout(() => processUploadQueue(), 500);
-                }
-            })();
-
-            return updatedQueue;
-        });
+            // Process next item in queue, use timeout to ensure states are clean
+            // Since we're inside useCallback without processUploadQueue dependency,
+            // we can't call processUploadQueue() directly. We can trigger a re-eval
+            // of the effect that monitors the queue length.
+        }
     }, []);
+
+    // Auto-process queue when new items are added, or when a previous one finishes
+    useEffect(() => {
+        if (uploadQueue.length > 0 && !isProcessingQueueRef.current) {
+            processUploadQueue();
+        }
+    }, [uploadQueue, processUploadQueue]);
 
     // Auto-process queue when new items are added
     useEffect(() => {

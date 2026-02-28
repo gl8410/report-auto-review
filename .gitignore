@@ -18,11 +18,12 @@ Desktop.ini
 *.sw?
 
 # ==========================================
-# Environment Variables
+# Environment Variables & Secrets
 # ==========================================
 .env
 .env.*
 !.env.example
+*.local
 
 # ==========================================
 # Frontend (frontend/)
@@ -89,12 +90,31 @@ backend/uploads/
 backend/static/
 
 # ==========================================
-# Project-Specific
+# Data & Storage
 # ==========================================
-.roo/
-communicate/
+data/postgres/
+data/chroma/
 testdata/
 testdata/display/
 knowledgedata/
-*.local
+
+# ==========================================
+# AI & Development Tools
+# ==========================================
+.roo/
 .clinerules
+
+# ==========================================
+# Temporary & Debug Files
+# ==========================================
+communicate/
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# ==========================================
+# Docker (local)
+# ==========================================
+docker-compose.override.yml

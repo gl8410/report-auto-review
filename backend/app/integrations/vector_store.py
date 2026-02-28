@@ -14,7 +14,19 @@ def get_chroma_client() -> Any:
     """Get ChromaDB client singleton"""
     global _chroma_client
     if _chroma_client is None:
-        _chroma_client = chromadb.HttpClient(host=settings.CHROMA_HOST, port=settings.CHROMA_PORT)
+        # Force no proxy for localhost connections to avoid interference
+        import os
+        os.environ["NO_PROXY"] = "localhost,127.0.0.1"
+        
+        # Use a more resilient client configuration for local Windows environments
+        _chroma_client = chromadb.HttpClient(
+            host=settings.CHROMA_HOST,
+            port=settings.CHROMA_PORT,
+            settings=chromadb.Settings(
+                allow_reset=True,
+                anonymized_telemetry=False
+            )
+        )
     return _chroma_client
 
 # Document collection name
@@ -35,7 +47,8 @@ async def get_embeddings(texts: List[str], batch_size: int = 2) -> List[List[flo
         "Content-Type": "application/json"
     }
 
-    timeout_config = httpx.Timeout(60.0, connect=10.0)
+    # Increased timeout to handle potential slow embedding API responses
+    timeout_config = httpx.Timeout(120.0, connect=30.0)
     all_embeddings: List[List[float]] = []
 
     async with httpx.AsyncClient(timeout=timeout_config, trust_env=False) as client:

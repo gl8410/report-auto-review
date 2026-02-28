@@ -1,19 +1,24 @@
-# Root .dockerignore
-# Note: docker-compose service build contexts are ./frontend and ./backend,
-# each with their own .dockerignore. This file applies to root-context builds only.
-
-# Version control & editor
+# ==========================================
+# Version Control & Editor
+# ==========================================
 .git
+.gitignore
 .vscode
 .idea
 .clinerules
 .roo/
 
-# Environment variables
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
 .env
 .env.*
+!.env.example
+*.local
 
-# Frontend (has its own build context ./frontend with its own .dockerignore)
+# ==========================================
+# Frontend (excluded from backend build)
+# ==========================================
 frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
@@ -21,7 +26,9 @@ frontend/.vite/
 frontend/coverage/
 node_modules/
 
-# Backend (has its own build context ./backend)
+# ==========================================
+# Backend (excluded from frontend build)
+# ==========================================
 backend/venv/
 backend/.venv/
 backend/__pycache__/
@@ -32,12 +39,37 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.coverage
+htmlcov/
 
-# Test & documentation data
-communicate/
+# ==========================================
+# Data & Storage
+# ==========================================
+data/
 testdata/
 knowledgedata/
 
-# Build artifacts
-dist/
-build/
+# ==========================================
+# Documentation & Misc
+# ==========================================
+README.md
+communicate/
+*.md
+*.log
+*.tmp
+*.temp
+*.bak
+
+# ==========================================
+# Docker Files
+# ==========================================
+docker-compose.yml
+docker-compose.override.yml
+Dockerfile
+.dockerignore
+
+# ==========================================
+# CI/CD
+# ==========================================
+.github/
+.gitlab-ci.yml

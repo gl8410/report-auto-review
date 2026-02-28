@@ -34,13 +34,18 @@ export const DocumentUploader: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docsRef = useRef<Document[]>([]);
+  const uploadQueueRef = useRef<UploadQueueItem[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isProcessingQueueRef = useRef<boolean>(false);
 
-  // Keep docsRef in sync with docs state
+  // Keep refs in sync with state
   useEffect(() => {
     docsRef.current = docs;
   }, [docs]);
+
+  useEffect(() => {
+    uploadQueueRef.current = uploadQueue;
+  }, [uploadQueue]);
 
   const loadDocs = useCallback(async () => {
     try {
@@ -55,7 +60,7 @@ export const DocumentUploader: React.FC = () => {
 
   useEffect(() => {
     loadDocs();
-    // Poll more frequently (every 2 seconds) when there are documents being processed
+    // Poll more frequently (every 5 seconds) when there are documents being processed
     const interval = setInterval(() => {
       const hasProcessing = docsRef.current.some(d =>
         d.status === 'UPLOADING' || d.status === 'PARSING' || d.status === 'EMBEDDING'
@@ -63,7 +68,7 @@ export const DocumentUploader: React.FC = () => {
       if (hasProcessing) {
         loadDocs();
       }
-    }, 2000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [loadDocs]);
 
@@ -77,101 +82,110 @@ export const DocumentUploader: React.FC = () => {
   const processUploadQueue = useCallback(async () => {
     if (isProcessingQueueRef.current) return;
 
-    setUploadQueue(queue => {
-      const nextItem = queue.find(item => item.status === 'queued');
-      if (!nextItem) {
-        isProcessingQueueRef.current = false;
-        return queue;
-      }
+    // Find next item to process from ref to avoid stale closures
+    const queue = uploadQueueRef.current;
+    const nextItem = queue.find(item => item.status === 'queued');
+    
+    if (!nextItem) {
+      isProcessingQueueRef.current = false;
+      return;
+    }
 
-      isProcessingQueueRef.current = true;
-      setCurrentUpload(nextItem);
+    isProcessingQueueRef.current = true;
+    setCurrentUpload(nextItem);
 
-      // Update item status to uploading
-      const updatedQueue = queue.map(item =>
-        item.id === nextItem.id ? { ...item, status: 'uploading' as const } : item
+    // Update item status to uploading
+    setUploadQueue(prevQueue => prevQueue.map(item =>
+      item.id === nextItem.id ? { ...item, status: 'uploading' as const } : item
+    ));
+
+    // Start the upload
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    try {
+      // Upload the document with progress tracking
+      const newDoc = await api.uploadDocument(
+        nextItem.file,
+        abortController.signal,
+        (progress) => {
+          setUploadQueue(q => q.map(item =>
+            item.id === nextItem.id ? { ...item, progress } : item
+          ));
+        }
       );
 
-      // Start the upload
-      (async () => {
-        const abortController = new AbortController();
-        abortControllerRef.current = abortController;
+      // Add the new document to the list (guard against polling race: loadDocs may have already added it)
+      setDocs(prevDocs =>
+        prevDocs.some(d => d.id === newDoc.id) ? prevDocs : [newDoc, ...prevDocs]
+      );
+
+      // Mark as completed
+      setUploadQueue(q => q.map(item =>
+        item.id === nextItem.id ? { ...item, status: 'completed' as const, progress: 100 } : item
+      ));
+
+      // Start polling for this document
+      const pollInterval = setInterval(async () => {
+        // Check if component is still mounted
+        if (!docsRef.current) {
+          clearInterval(pollInterval);
+          return;
+        }
 
         try {
-          // Upload the document with progress tracking
-          const newDoc = await api.uploadDocument(
-            nextItem.file,
-            abortController.signal,
-            (progress) => {
-              setUploadQueue(q => q.map(item =>
-                item.id === nextItem.id ? { ...item, progress } : item
-              ));
+          const updatedDoc = await api.getDocument(newDoc.id);
+          setDocs(prevDocs => {
+            // Only update if status changed to avoid unnecessary re-renders
+            const currentDoc = prevDocs.find(d => d.id === newDoc.id);
+            if (currentDoc && currentDoc.status === updatedDoc.status) {
+              return prevDocs;
             }
-          );
+            return prevDocs.map(d => d.id === newDoc.id ? updatedDoc : d);
+          });
 
-          // Add the new document to the list (guard against polling race: loadDocs may have already added it)
-          setDocs(prevDocs =>
-            prevDocs.some(d => d.id === newDoc.id) ? prevDocs : [newDoc, ...prevDocs]
-          );
-
-          // Mark as completed
-          setUploadQueue(q => q.map(item =>
-            item.id === nextItem.id ? { ...item, status: 'completed' as const, progress: 100 } : item
-          ));
-
-          // Start polling for this document
-          const pollInterval = setInterval(async () => {
-            try {
-              const updatedDoc = await api.getDocument(newDoc.id);
-              setDocs(prevDocs =>
-                prevDocs.map(d => d.id === newDoc.id ? updatedDoc : d)
-              );
-
-              if (updatedDoc.status === 'DONE' || updatedDoc.status === 'FAILED') {
-                clearInterval(pollInterval);
-              }
-            } catch (e) {
-              console.error('Error polling document status:', e);
-              clearInterval(pollInterval);
-            }
-          }, 1000);
-
-          setTimeout(() => clearInterval(pollInterval), 30 * 60 * 1000);
-
-          // Remove from queue after 2 seconds
-          setTimeout(() => {
-            setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
-          }, 2000);
-
-        } catch (e: any) {
-          if (e.name === 'AbortError') {
-            // Remove cancelled item from queue
-            setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
-          } else {
-            // Mark as failed
-            setUploadQueue(q => q.map(item =>
-              item.id === nextItem.id
-                ? { ...item, status: 'failed' as const, error: e.message || 'Upload failed' }
-                : item
-            ));
-
-            // Remove failed item after 5 seconds
-            setTimeout(() => {
-              setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
-            }, 5000);
+          if (updatedDoc.status === 'DONE' || updatedDoc.status === 'FAILED') {
+            clearInterval(pollInterval);
           }
-        } finally {
-          abortControllerRef.current = null;
-          setCurrentUpload(null);
-          isProcessingQueueRef.current = false;
-
-          // Process next item in queue
-          setTimeout(() => processUploadQueue(), 500);
+        } catch (e) {
+          // Don't log 404s or network errors during polling to avoid console spam
+          // Just stop polling if it seems permanent
+          clearInterval(pollInterval);
         }
-      })();
+      }, 2000); // Poll every 2 seconds
 
-      return updatedQueue;
-    });
+      setTimeout(() => clearInterval(pollInterval), 30 * 60 * 1000);
+
+      // Remove from queue after 2 seconds
+      setTimeout(() => {
+        setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
+      }, 2000);
+
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        // Remove cancelled item from queue
+        setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
+      } else {
+        // Mark as failed
+        setUploadQueue(q => q.map(item =>
+          item.id === nextItem.id
+            ? { ...item, status: 'failed' as const, error: e.message || 'Upload failed' }
+            : item
+        ));
+
+        // Remove failed item after 5 seconds
+        setTimeout(() => {
+          setUploadQueue(q => q.filter(item => item.id !== nextItem.id));
+        }, 5000);
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setCurrentUpload(null);
+      isProcessingQueueRef.current = false;
+
+      // Process next item in queue
+      setTimeout(() => processUploadQueue(), 500);
+    }
   }, []);
 
   // Auto-process queue when new items are added

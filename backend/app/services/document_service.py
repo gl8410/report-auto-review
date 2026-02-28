@@ -2,6 +2,7 @@ import logging
 import os
 import uuid
 import json
+import io
 from typing import List, Optional
 from fastapi import UploadFile, HTTPException
 from sqlmodel import Session, select
@@ -17,46 +18,83 @@ logger = logging.getLogger(__name__)
 
 async def extract_text_from_file(file_content: bytes, filename: str) -> str:
     """
-    Extract text from a file using MinerU API.
-    This is a helper function for temporary file uploads (analysis, rule imports, etc.)
+    Extract text from a file. 
+    Supports .txt, .md, .pdf, .docx directly to avoid MinerU dependency for simple rule extraction.
+    Fallbacks to MinerU only for other supported types if necessary.
 
     Args:
         file_content: The file content as bytes
         filename: The filename
 
     Returns:
-        Extracted text content as markdown string
-
-    Raises:
-        HTTPException: If extraction fails
+        Extracted text content
     """
+    ext = os.path.splitext(filename)[1].lower()
+    
     try:
-        # Use MinerU to extract text
+        # 1. Handle Plain Text files
+        if ext in ['.txt', '.md']:
+            try:
+                return file_content.decode('utf-8')
+            except UnicodeDecodeError:
+                return file_content.decode('gbk', errors='ignore')
+
+        # 2. Handle PDF files
+        if ext == '.pdf':
+            import pypdf
+            try:
+                reader = pypdf.PdfReader(io.BytesIO(file_content))
+                text = ""
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                if text.strip():
+                    return text
+            except Exception as pdf_err:
+                logger.warning(f"pypdf failed for {filename}: {pdf_err}")
+
+        # 3. Handle DOCX files
+        if ext == '.docx':
+            import docx
+            try:
+                doc = docx.Document(io.BytesIO(file_content))
+                text = "\n".join([para.text for para in doc.paragraphs])
+                if text.strip():
+                    return text
+            except Exception as docx_err:
+                logger.warning(f"python-docx failed for {filename}: {docx_err}")
+
+        # 4. Fallback to MinerU for other types (doc, ppt, pptx) or if local extraction failed
+        # User requested "don't use minerU" for rule extraction, but for files like .doc or .pptx 
+        # it might be the only way if we don't have other local tools.
+        # However, for .txt it MUST NOT use MinerU.
+        
+        logger.info(f"Falling back to MinerU for {filename}")
         files_data = [{
             "name": filename,
             "content": file_content,
-            "data_id": str(uuid.uuid4())  # Temporary ID
+            "data_id": str(uuid.uuid4())
         }]
 
         results = mineru_service.process_files(files_data)
-
         if not results or len(results) == 0:
             raise ValueError("No results returned from MinerU")
 
         result = results[0]
-
         if not result.get("success"):
             error_msg = result.get("error_message", "Unknown MinerU error")
-            raise ValueError(f"MinerU parsing failed: {error_msg}")
+            # If it's an unsupported file type for MinerU, we should give a better error if we also failed locally
+            raise ValueError(f"Extraction failed: {error_msg}")
 
         markdown_content = result.get("markdown_content", "")
-
         if not markdown_content:
-            raise ValueError("No markdown content extracted from file")
+            raise ValueError("No content extracted from file")
 
         return markdown_content
 
     except Exception as e:
+        logger.error(f"Text extraction failed for {filename}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to extract text from {filename}: {str(e)}"

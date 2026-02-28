@@ -36,3 +36,8 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.get("/")
 def root():
     return {"message": "Welcome to Report Review Lite API"}
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint for Docker/Kubernetes probes."""
+    return {"status": "healthy", "service": "report-review-backend"}

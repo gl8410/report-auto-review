@@ -294,7 +294,7 @@ export const RuleManager: React.FC = () => {
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">规则管理</h2>
-          <p className="text-slate-500">创建规则组，导入标准文件进行规则解析</p>
+          <p className="text-slate-500">创建规则组，导入标准文件进行规则智能解析,支持txt,md,pdf,docx格式文件,大小限制5MB，或者手动添加审查规则</p>
         </div>
       </div>
 

@@ -80,29 +80,29 @@ export const Profile: React.FC = () => {
     }
   };
 
-  if (loading) return <div>Loading profile...</div>;
+  if (loading) return <div>读取账户信息...</div>;
 
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white rounded shadow">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">User Profile</h2>
+        <h2 className="text-2xl font-bold">用户账户</h2>
         <button onClick={signOut} className="text-red-600 hover:text-red-800">Sign Out</button>
       </div>
 
       <div className="mb-8 p-4 bg-gray-50 rounded">
-        <p><strong>Email:</strong> {user?.email}</p>
-        <p className="mt-2"><strong>Credits:</strong> <span className="font-bold text-green-600 text-lg">{profile?.credits ?? 0}</span></p>
+        <p><strong>帐号名:</strong> {user?.email}</p>
+        <p className="mt-2"><strong>剩余积分:</strong> <span className="font-bold text-green-600 text-lg">{profile?.credits ?? 0}</span></p>
       </div>
 
       <div className="border-t pt-6">
         <div className="flex items-center gap-2 mb-6">
           <Lock className="w-5 h-5 text-indigo-600" />
-          <h3 className="text-xl font-bold text-gray-900">Change Password</h3>
+          <h3 className="text-xl font-bold text-gray-900">修改密码</h3>
         </div>
         
         <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-md">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">当前密码</label>
             <input
               type="password"
               value={currentPassword}
@@ -114,7 +114,7 @@ export const Profile: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">新密码</label>
             <input
               type="password"
               value={newPassword}
@@ -124,11 +124,11 @@ export const Profile: React.FC = () => {
               minLength={6}
               required
             />
-            <p className="mt-1 text-xs text-slate-500">Must be at least 6 characters</p>
+            <p className="mt-1 text-xs text-slate-500">至少为6位字符</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">确认新密码</label>
             <input
               type="password"
               value={confirmPassword}
@@ -150,14 +150,14 @@ export const Profile: React.FC = () => {
                }}
                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
              >
-               Cancel
+               取消
              </button>
             <button
               type="submit"
               disabled={isUpdating}
               className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isUpdating ? 'Updating...' : 'Update Password'}
+              {isUpdating ? 'Updating...' : '更新密码'}
             </button>
           </div>
           
