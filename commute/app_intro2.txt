@@ -1,0 +1,99 @@
+# Report Review Lite - App Introduction & Marketing Assets
+
+## 1. App Icon Prompt
+Prompt for AI Image Generator:
+A simple minimalist flat vector app icon representing automated document review 64x64 pixels transparent background deep indigo and crisp white color palette featuring a stylized magnifying glass hovering over an open digital document with a glowing AI spark in the center clear and easy to recognize at small sizes
+
+## 2. App Description
+
+### English Version
+Report Review Lite solves the nightmare of manual engineering report analysis.
+Pain Points and Benefits:
+1. Time-consuming manual checks: Automate auditing with AI to review hundreds of pages in minutes saving valuable engineering hours.
+2. Inconsistent rule application: Enforce custom centralized rule sets strictly ensuring 100% consistency and eliminating human error.
+3. Lost context during review: Pinpoint issues instantly with a built-in interactive viewer that highlights exact text locations saving you from endless scrolling.
+4. Version tracking difficulties: Compare document versions easily with smart historical tracking to streamline compliance and approval workflows.
+Experience pinpoint accuracy and rapid turnaround for all your technical documents.
+
+### 中文版
+Report Review Lite 彻底解决工程报告审查难题。
+核心痛点与优势：
+1. 人工审核耗时费力：AI 自动化诊断可在秒级完成百页报告审查，大幅节省工程师高价值时间。
+2. 规则执行不一致：将复杂企业标准转化为 AI 审查规则，确保 100% 统一执行，告别人为疏漏。
+3. 问题溯源困难：内置交互式阅读器精准高亮问题原文位置，所见即所得，定位零延迟。
+4. 版本对比繁琐：智能比对新旧版本差异，轻松追溯审查历史，极大简化合规与审批流程。
+
+## 3. Demo Video Script
+
+
+
+
+欢迎来到通用文本审查系统
+它可实现从规则到结果的全过程智能化审查
+
+通过层级方式，可对审查规则进行管理
+导入既有规范，自动提取条文，建立规则库进行深度审查
+
+对于一般性符合文件，可加入对比进行冲突性分析
+
+上传待审文稿，系统自动进行解析
+智能识别图片，表格等内容并构建审查向量库
+
+选择文档、对比文件或规则后，自动进行审查比对
+
+流式输出结果直至审查完成
+
+点击具体条文，可直接查看审查依据，原文内容，审查结果
+
+可对审查结果进行修改并导出
+
+
+系统优势：
+1.隐私保护，私有规则仅限当前用户使用，他人无法查看
+2.知识沉淀，可根据结果修改或新建规则，实现经验积累
+3.自动审查+人工审核，效率和质量的有机结合
+
+
+
+进入文档仓库模块点击上传一份长篇报告
+
+只需将复杂的工程报告上传到系统
+人工智能就会自动帮您完成文本解析与向量化处理
+切换到
+系统内置了强大的规则引擎
+您可以将企业规范转化为系统可以理解的审查规则
+确保每一次检查标准绝对一致
+进入审查任务选择刚才上传的文档和对应规则集点击开始分析
+配置完成后点击开始分析
+审查引擎会逐条比对规则
+几分钟内即可完成人工需要几个小时的工作量
+审查结果渲染完成屏幕左侧显示各项违规问题列表
+审查结束系统自动生成详细的诊断报告
+鼠标点击其中一条违规记录
+当您点击任意一条违规问题时
+右侧的文档视图会瞬间跳转到原文的具体页码
+精准高亮出不合规的段落
+定位问题一步到位
+进入多档比对将原始草稿和修改后的版本放在一起对照查看
+此外系统还支持多档比对
+轻松追踪文档修改历史
+回到主控制台画面淡出显示产品标志
+让工程报告审查更智能更精准更高效
+
+## 4. Module Guiding Picture Prompts
+
+### Module 1: Document Repository
+Prompt:
+A 1280x260 minimalist software banner. On the right side a sleek slightly angled 3D perspective screenshot of a web application showing a file upload queue and a document list table. On the left side modern flat graphics depicting a document transforming into digital data nodes. Use a soft blue and indigo color palette. Include elegant sweeping curved lines connecting the left graphics to the UI screenshot to indicate data flow. Clean professional tech style.
+
+### Module 2: Rule Management
+Prompt:
+A 1280x260 modern UI presentation banner. The right half features an isometric view of a system dashboard showing a hierarchical tree menu and rule configuration tables. The left half features stylized abstract icons of gears checklists and a glowing shield representing compliance and logic. The background is a crisp white to light gray gradient with subtle geometric grid lines. Draw a glowing energetic arrow pointing from the checklist icon towards the UI screenshot.
+
+### Module 3: AI Review Engine
+Prompt:
+A 1280x260 tech-focused banner. Centered is a vibrant high-resolution screenshot of a dual-pane interface with a list of analytical results on the left and a highlighted PDF document on the right. Surrounding the screenshot are subtle glowing particles and a faint circuitry pattern implying Artificial Intelligence processing. Use a contrast of deep navy blue background with neon cyan and purple highlights. Add a glowing magnifying glass graphic pointing precisely at the highlighted text in the UI screenshot.
+
+### Module 4: History & Comparison
+Prompt:
+A 1280x260 professional dashboard banner. The image showcases two floating UI panels side-by-side representing a document comparison feature. Between the two panels render a clean modern glowing timeline or sync arrows graphic. Overall tone is bright utilizing whites soft emerald greens and slate grays to convey clarity and resolution. Keep the composition balanced and spacious.
