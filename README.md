@@ -4,6 +4,8 @@
 
 # 📑 Report Review Lite
 
+English | [中文版](README_CN.md)
+
 **Report Review Lite** is a powerful, AI-driven document analysis and review platform. It leverages state-of-the-art LLMs (Gemini, OpenAI) to automate the process of reviewing complex reports against a set of predefined or custom rules.
 
 ---
@@ -20,15 +22,23 @@
 
 ---
 
+## 📸 Screenshots
+![Rule Management](https://media.guil.top/api/public/dl/lhCaevOk?inline=true)
+![Document Repository](https://media.guil.top/api/public/dl/WsZLdPtj?inline=true)
+![Review Results](https://media.guil.top/api/public/dl/jQ0ALZSz?inline=true)
+![Comparison Analysis](https://media.guil.top/api/public/dl/eVRni-LS?inline=true)
+
+---
+
 ## 🛠️ Tech Stack
 
-### Frontend
+### 🎨 Frontend
 - **Framework**: [React](https://reactjs.org/) + [Vite](https://vitejs.dev/)
 - **Language**: [TypeScript](https://www.typescriptlang.org/)
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/)
 - **State Management**: React Context & Hooks
 
-### Backend
+### ⚙️ Backend
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
 - **DB & Auth**: [Supabase](https://supabase.com/) (PostgreSQL)
 - **ORM**: [SQLModel](https://sqlmodel.tiangolo.com/)
