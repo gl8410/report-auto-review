@@ -96,8 +96,11 @@ knowledgedata/
 communicate/
 .roo/
 .clinerules
+.clinerules
+.vscode
 .agents/
 .antigravity*
+commute
 
 # ==========================================
 # Logs & Temporary Files
